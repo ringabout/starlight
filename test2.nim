@@ -43,6 +43,19 @@ proc toUpperCase(x: cstring): cstring {.importjs: "#.toUpperCase()".}
 when true:
   proc createDom(): Element =
     var name = cstring"world"
+    var active = false
+    buildHtml:
+      text "Enter name: "
+      input(`type`="text", onValue="{name}")
+      text "Hello {name}!"
+      br()
+      input(`type`="checkbox", onChecked="{active}")
+      text "{active}"
+  setRender createDom
+
+when false:
+  proc createDom(): Element =
+    var name = cstring"world"
     buildHtml:
       h1:
         text fmt"Hello {name.toUpperCase()}!"

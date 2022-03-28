@@ -1,6 +1,6 @@
 import std/macros
 import std/dom
-
+import std/strutils
 
 proc getName(n: NimNode): string =
   case n.kind
@@ -23,7 +23,6 @@ proc getName(n: NimNode): string =
   of nnkOpenSymChoice, nnkClosedSymChoice:
     result = getName(n[0])
   else:
-    #echo repr n
     expectKind(n, nnkIdent)
 
 import std/[sets, strformat]
@@ -118,6 +117,10 @@ proc bindText*(monitor: Monitor, element: Element, fn: proc (): cstring) =
   let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value))
   monitor.watchers.add watcher
 
+proc bindInput*(monitor: Monitor, element: Element, name: cstring, get: proc (): cstring) =
+  let watcher = Watcher(fn: get, callback: (value: cstring) => (element.setAttribute(name, value)))
+  monitor.watchers.add watcher
+
 proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int, node: NimNode): NimNode =
   case node.kind
@@ -139,15 +142,38 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
           quote do:
             `parentElement`[`count`]
       inc count
-      echo (count, name)
-      var part = ""
-      var partCount = 0
-      result = newStmtList()
-
-      # result.add quote do:
-      #   let test = `parentNode`
-      result.add buildComponent(monitor, parentNode, part, partCount, node[1])
-      res.add fmt"<{name}>{part}</{name}>"
+      let isSingleTag = name in ["input", "br"]
+      if node.len == 1:
+        result = newEmptyNode()
+        if isSingleTag:
+          res.add fmt"<{name}/>"
+        else:
+          res.add fmt"<{name}></{name}>"
+      else:
+        var part = ""
+        var partCount = 0
+        if isSingleTag:
+          res.add fmt"<{name}"
+        result = newStmtList()
+        for i in 1..<node.len:
+          let x = node[i]
+          if x.kind == nnkExprEqExpr:
+            let name = getName(x[0])
+            if name.startsWith("on"):
+              if name == "onValue":
+                result.add quote do:
+                  bindInput(`monitor`, `parentElement`, "value", () => (x[1].strVal))
+            else:
+              # todo x1.kind
+              res.add fmt" {name}={x[1].strVal}"
+              # result.add newCall(bindSym"setAttr", parentNode, newStrLitNode(name), x[1])
+          else:
+            if isSingleTag:
+              doAssert false, fmt"A empty element({name}) is not allowed to have children"
+            result.add buildComponent(monitor, parentNode, part, partCount, x)
+            res.add fmt"<{name}>{part}</{name}>"
+        if isSingleTag:
+          res.add ">"
     elif name == "text":
       case node[1].kind:
       of nnkStrLit:
@@ -177,18 +203,17 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
           # let tmp = node[1] # ! bug cannot inline node[1]
           # result = quote do:
           #   `currentNode` = `tmp`
-      else: doAssert false
+      else: doAssert false, fmt"1: {node[1].kind}"
     else:
-      doAssert false
+      doAssert false, fmt"2: {name}"
       # result = newEmptyNode()
   else:
-    doAssert false
+    doAssert false, fmt"3: {node.kind}"
     # if node.len > 0:
     #   for i in node:
     #     result = buildComponent(i, res, content)
     # else:
     #   result = node
-
 
 macro buildHtml*(children: untyped): Element =
   echo children.treeRepr
@@ -206,8 +231,8 @@ macro buildHtml*(children: untyped): Element =
     fragment.innerHtml = `res`.cstring
     let `parentElement` = fragment.content
     `component`
-    # for task in `monitor`.watchers:
-    #   task.callback(task.fn())
+    for task in `monitor`.watchers:
+      task.callback(task.fn())
     cast[Element](`parentElement`)
 
 proc setRender*(render: proc(): Element, id = cstring"ROOT") =
