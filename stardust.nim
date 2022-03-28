@@ -76,7 +76,7 @@ proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
           while i < s.len:
             if s[i] == closeChar:
               isBinding = true
-              stringNode.add newCall(ident"toString", ident(part))
+              stringNode.add newCall(ident"toString", parseExpr(part))
               part.setLen(0)
               inc i
               break
@@ -101,7 +101,7 @@ proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
           quote do:
             `parentElement`[`count`]
       result = quote do:
-        bindText(`monitor`, `currentNode`, () => cstring(`part`))
+        bindText(`monitor`, `currentNode`, () => `result`)
     else:
       res.add s
       result = newEmptyNode()
@@ -114,16 +114,9 @@ type
   Monitor = ref object
     watchers: seq[Watcher]
 
-proc newWatcher(fn: proc (): cstring, callback: proc (value: cstring) {.closure.}): Watcher =
-  result = Watcher(fn: fn, callback: callback)
-
-proc newMonitor(): Monitor =
-  result = new Monitor
-
 proc bindText*(monitor: Monitor, element: Element, fn: proc (): cstring) =
-  let watcher = newWatcher(fn, (value: cstring) => (element.textContent = value))
+  let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value))
   monitor.watchers.add watcher
-
 
 proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int, node: NimNode): NimNode =
@@ -138,8 +131,13 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
     let name = getName(node[0])
     if name in buildTable:
       # check the length of node
-      var parentNode = quote do:
-        `parentElement`[`count`]
+      var parentNode =
+        if count == 0:
+          quote do:
+            `parentElement`.firstChild
+        else:
+          quote do:
+            `parentElement`[`count`]
       inc count
       echo (count, name)
       var part = ""
@@ -155,21 +153,6 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
       of nnkStrLit:
         result = parseBindingString(res, count, parentElement, monitor, node[1].strVal)
       of nnkCallStrLit:
-        # let name = getName(node[1][0])
-        # if name == "raw":
-        #   let part = parseFormatString(node[1][1].strVal)
-        #   res.add " "
-        #   var currentNode =
-        #     if count == 0:
-        #       quote do:
-        #         `parentElement`.firstChild.textContent
-        #     else:
-        #       quote do:
-        #         `parentElement`[`count`].textContent
-        #   inc count
-        #   result = quote do:
-        #     `currentNode` = `part`
-        # else:
         res.add " "
         var currentNode =
           if count == 0:
@@ -214,18 +197,18 @@ macro buildHtml*(children: untyped): Element =
   var res = ""
   var count = 0
   var monitor = genSym(nskVar, "monitor")
-
   let component = buildComponent(monitor, parentElement, res, count, children)
   echo repr(component)
   echo res
   result = quote do:
-    var `monitor` = newMonitor()
+    var `monitor` = Monitor()
     var fragment = document.createElement("template")
     fragment.innerHtml = `res`.cstring
     let `parentElement` = fragment.content
     `component`
+    # for task in `monitor`.watchers:
+    #   task.callback(task.fn())
     cast[Element](`parentElement`)
-
 
 proc setRender*(render: proc(): Element, id = cstring"ROOT") =
   let root = document.getElementById(id)
