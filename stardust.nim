@@ -50,10 +50,37 @@ var buildTable {.compileTime.} = toHashSet([
     "title", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"])
 
 import std/sugar
+import std/jsconsole
 
 proc toString*[T](x: T): cstring {.importjs: "#.toString()".}
 
 proc concat*(x1, x2: cstring): cstring {.importjs: "(# + #)".}
+
+type
+  Watcher = ref object
+    fn: proc (): cstring
+    callback: proc (value: cstring) {.closure.}
+    value: cstring
+  Monitor = ref object
+    watchers: seq[Watcher]
+
+proc jsTypeof(x: cstring): cstring {.importjs: "typeof(#)".}
+
+proc detect(monitor: Monitor) =
+  while true:
+    var changes = 0
+    for w in monitor.watchers:
+      let value = w.fn()
+      if value != w.value:
+        w.callback(value)
+        w.value = value
+        inc changes
+    if changes == 0:
+      break
+
+
+proc apply(monitor: Monitor) =
+  discard setTimeout(() => detect(monitor), 10)
 
 proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
                         monitor: NimNode,
@@ -106,38 +133,54 @@ proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
       result = newEmptyNode()
     inc count
 
-type
-  Watcher = ref object
-    fn: proc (): cstring
-    callback: proc (value: cstring) {.closure.}
-  Monitor = ref object
-    watchers: seq[Watcher]
-
 proc bindText*(monitor: Monitor, element: Element, fn: proc (): cstring) =
-  let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value))
+  let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value), value: "")
   monitor.watchers.add watcher
 
-proc bindInput*(monitor: Monitor, element: Element, name: cstring, get: proc (): cstring) =
-  let watcher = Watcher(fn: get, callback: (value: cstring) => (element.setAttribute(name, value)))
+proc setAttr[T: cstring|bool](x: Element; name: cstring, value: T) {.importjs: "#[#] = #".}
+proc getAttr(x: Element; name: cstring): cstring {.importjs: "#[#]".}
+
+proc getChecked(x: Element; name: cstring): bool {.importjs: "#[#]".}
+
+
+proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var bool,
+                getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var bool)) =
+  let watcher = Watcher(fn: getCallBack, callback: 
+    (value: cstring) => (element.setAttr(name, if value == "true": true else: false)), value: "")
   monitor.watchers.add watcher
+  addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
+
+proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var cstring,
+                getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var cstring)) =
+  let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
+  monitor.watchers.add watcher
+  addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
 
 proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
-                    count: var int, node: NimNode): NimNode =
+                    count: var int,
+                    textCount: var int,
+                    node: NimNode): NimNode =
   case node.kind
   of nnkStmtList, nnkStmtListExpr:
+
+    textCount = 0 # todo
+
     result = newNimNode(node.kind, node)
     for x in node:
-      let tmp = buildComponent(monitor, parentElement, res, count, x)
+      let tmp = buildComponent(monitor, parentElement, res, count, textCount, x)
       if tmp.kind != nnkEmpty:
         result.add tmp
+
+    textCount = 0 # todo
   of nnkCallKinds - {nnkInfix}:
     let name = getName(node[0])
     if name in buildTable:
+      textCount = 0 # todo
       # check the length of node
       var parentNode =
         if count == 0:
           quote do:
-            `parentElement`.firstChild
+            cast[Element](`parentElement`.firstChild)
         else:
           quote do:
             `parentElement`[`count`]
@@ -160,9 +203,27 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
           if x.kind == nnkExprEqExpr:
             let name = getName(x[0])
             if name.startsWith("on"):
-              if name == "onValue":
+              let variable = parseExpr(x[1].strVal[1..^2])
+              if name == "onChecked":
                 result.add quote do:
-                  bindInput(`monitor`, `parentElement`, "value", () => (x[1].strVal))
+                  bindInput(`monitor`, `parentNode`, cstring"checked",
+                            `variable`, () => `variable`.toString(),
+                            proc (x: Watcher, node: Element, y: var bool) =
+                              y = getChecked(node, "checked");
+
+                              x.value = y.toString()
+                              apply(`monitor`)
+                            )
+              else:
+                let newName = name[2..^1].toLowerAscii
+                result.add quote do:
+                  bindInput(`monitor`, `parentNode`, `newName`.cstring,
+                            `variable`, () => `variable`,
+                            proc (x: Watcher, node: Element, y: var cstring) =
+                              x.value = getAttr(node, `newName`.cstring);
+                              y = x.value;
+                              apply(`monitor`)
+                            )
             else:
               # todo x1.kind
               res.add fmt" {name}={x[1].strVal}"
@@ -170,11 +231,15 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
           else:
             if isSingleTag:
               doAssert false, fmt"A empty element({name}) is not allowed to have children"
-            result.add buildComponent(monitor, parentNode, part, partCount, x)
+            result.add buildComponent(monitor, parentNode, part, partCount, textCount, x)
             res.add fmt"<{name}>{part}</{name}>"
         if isSingleTag:
           res.add ">"
+      textCount = 0 # todo
     elif name == "text":
+      if textCount == 1:
+        doAssert false, "The text node is allowed to use sequentially"
+      inc textCount # todo
       case node[1].kind:
       of nnkStrLit:
         result = parseBindingString(res, count, parentElement, monitor, node[1].strVal)
@@ -221,8 +286,9 @@ macro buildHtml*(children: untyped): Element =
   let parentElement = genSym(nskLet, "parentElement")
   var res = ""
   var count = 0
+  var textCount = 0
   var monitor = genSym(nskVar, "monitor")
-  let component = buildComponent(monitor, parentElement, res, count, children)
+  let component = buildComponent(monitor, parentElement, res, count, textCount, children)
   echo repr(component)
   echo res
   result = quote do:
@@ -231,8 +297,7 @@ macro buildHtml*(children: untyped): Element =
     fragment.innerHtml = `res`.cstring
     let `parentElement` = fragment.content
     `component`
-    for task in `monitor`.watchers:
-      task.callback(task.fn())
+    apply(`monitor`)
     cast[Element](`parentElement`)
 
 proc setRender*(render: proc(): Element, id = cstring"ROOT") =

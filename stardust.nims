@@ -1,1 +1,2 @@
 --b:js
+--d:nimSlimSystem
