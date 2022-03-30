@@ -50,7 +50,6 @@ var buildTable {.compileTime.} = toHashSet([
     "title", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"])
 
 import std/sugar
-import std/jsconsole
 
 proc toString*[T](x: T): cstring {.importjs: "#.toString()".}
 
@@ -64,7 +63,6 @@ type
   Monitor = ref object
     watchers: seq[Watcher]
 
-proc jsTypeof(x: cstring): cstring {.importjs: "typeof(#)".}
 
 proc detect(monitor: Monitor) =
   while true:
@@ -81,57 +79,6 @@ proc detect(monitor: Monitor) =
 
 proc apply(monitor: Monitor) =
   discard setTimeout(() => detect(monitor), 10)
-
-proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
-                        monitor: NimNode,
-                        s: string, openChar = '{', closeChar = '}'): NimNode =
-  if s.len == 0:
-    result = newStrLitNode("")
-  elif s.len > 0:
-    var stringNode: seq[NimNode]
-    var i = 0
-    var part = ""
-    var isBinding = false
-    block outer:
-      while i < s.len:
-        if s[i] == openChar:
-          if part.len > 0:
-            stringNode.add newStrLitNode(part)
-            part.setLen(0)
-          inc i
-          while i < s.len:
-            if s[i] == closeChar:
-              isBinding = true
-              stringNode.add newCall(ident"toString", parseExpr(part))
-              part.setLen(0)
-              inc i
-              break
-            else:
-              part.add s[i]
-              inc i
-        else:
-          part.add s[i]
-          inc i
-
-    if isBinding:
-      result = stringNode[^1]
-      for i in countdown(stringNode.len-2, 0):
-        result = newCall(ident"concat", stringNode[i], result)
-
-      res.add " "
-      var currentNode =
-        if count == 0:
-          quote do:
-            cast[Element](`parentElement`.firstChild)
-        else:
-          quote do:
-            `parentElement`[`count`]
-      result = quote do:
-        bindText(`monitor`, `currentNode`, () => `result`)
-    else:
-      res.add s
-      result = newEmptyNode()
-    inc count
 
 proc bindText*(monitor: Monitor, element: Element, fn: proc (): cstring) =
   let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value), value: "")
@@ -203,7 +150,7 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
           if x.kind == nnkExprEqExpr:
             let name = getName(x[0])
             if name.startsWith("on"):
-              let variable = parseExpr(x[1].strVal[1..^2])
+              let variable = x[1]
               if name == "onChecked":
                 result.add quote do:
                   bindInput(`monitor`, `parentNode`, cstring"checked",
@@ -214,6 +161,9 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
                               x.value = y.toString()
                               apply(`monitor`)
                             )
+              elif name == "onClick":
+                result.add quote do:
+                  addEventListener(`parentNode`, "click", (ev: Event) => (`variable`(ev); apply(`monitor`)))
               else:
                 let newName = name[2..^1].toLowerAscii
                 result.add quote do:
@@ -242,33 +192,22 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
       inc textCount # todo
       case node[1].kind:
       of nnkStrLit:
-        result = parseBindingString(res, count, parentElement, monitor, node[1].strVal)
-      of nnkCallStrLit:
+        res.add node[1].strVal
+        result = newEmptyNode()
+      else:
         res.add " "
         var currentNode =
           if count == 0:
             quote do:
-              `parentElement`.firstChild.textContent #! Node
+              `parentElement`.firstChild #! Node
           else:
             quote do:
-              `parentElement`[`count`].textContent
-        inc count
-        result = newAssignment(currentNode, node[1])
-      of {nnkCommand, nnkCall}: # todo
-          res.add " "
-          var currentNode =
-            if count == 0:
-              quote do:
-                `parentElement`.firstChild.textContent #! Node
-            else:
-              quote do:
-                `parentElement`[`count`].textContent
-          inc count
-          result = newAssignment(currentNode, node[1])
-          # let tmp = node[1] # ! bug cannot inline node[1]
-          # result = quote do:
-          #   `currentNode` = `tmp`
-      else: doAssert false, fmt"1: {node[1].kind}"
+              `parentElement`[`count`]
+
+        let tmp = node[1] # ! bug cannot inline node[1]
+        result = quote do:
+          bindText(`monitor`, `currentNode`, () => `tmp`)
+      inc count
     else:
       doAssert false, fmt"2: {name}"
       # result = newEmptyNode()
@@ -300,6 +239,6 @@ macro buildHtml*(children: untyped): Element =
     apply(`monitor`)
     cast[Element](`parentElement`)
 
-proc setRender*(render: proc(): Element, id = cstring"ROOT") =
+proc setRenderer*(render: proc(): Element, id = cstring"ROOT") =
   let root = document.getElementById(id)
   root.appendChild render()

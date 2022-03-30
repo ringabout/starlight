@@ -1,5 +1,4 @@
-import stardust
-import std/[macros, dom]
+import std/[macros, dom, sugar]
 
 
 proc parseFormatString(s: string, openChar = '{', closeChar = '}'): NimNode =
@@ -40,18 +39,64 @@ macro fmt*(x: static string): cstring =
 
 proc toUpperCase(x: cstring): cstring {.importjs: "#.toUpperCase()".}
 
-# when true:
-var name = cstring"world"
-var active = false
-proc createDom(): Element =
-  buildHtml:
-    text "Enter name: "
-    input(`type`="text", onValue="{name}")
-    text "Hello {name}!"
-    br()
-    input(`type`="checkbox", onChecked="{active}")
-    text "{active}"
-setRender createDom
+# Enter word and press enter:
+# <input bind:value={name} on:keydown|enter={name=''} /> {name}
+# <br />
+# <button on:click={click($event)}>Click!</button>
+# <!-- <a href on:click|preventDefault={event=$element.textContent}>Click</a> -->
+# {event}
+import std/jsconsole
+
+when true:
+  import stardust
+
+
+when false:
+  proc createDom(): Element =
+    var count = 0
+    var name = cstring""
+    let call = (ev: Event) => (count += 1)
+    buildHtml:
+      text "Enter word and press enter:"
+      input(onValue=name)
+      br()
+      text "{name}"
+      br()
+      button(onClick=call):
+        text "Click me"
+      text " {count}"
+  setRenderer createDom
+
+
+when true:
+  import stardust, std/dom, std/sugar
+  proc createDom(): Element =
+    var count = 0
+    var name = cstring""
+    let call = (ev: Event) => (count += 1)
+    buildHtml:
+      text "Enter word and press enter:"
+      input(onValue=name)
+      br()
+      text name.toString()
+      br()
+      button(onClick=call):
+        text "Click me!"
+      text concat(" ".cstring, count.toString())
+  setRenderer createDom
+
+when false:
+  var name = cstring"world"
+  var active = false
+  proc createDom(): Element =
+    buildHtml:
+      text "Enter name: "
+      input(`type`="text", onValue=name)
+      text "Hello {name}!"
+      br()
+      input(`type`="checkbox", onChecked=active)
+      text "{active}"
+  setRenderer createDom
 
 when false:
   proc createDom(): Element =
@@ -60,7 +105,7 @@ when false:
       h1:
         text fmt"Hello {name.toUpperCase()}!"
 
-  setRender createDom
+  setRenderer createDom
 
 when false:
   var counter1 = 0
@@ -84,7 +129,7 @@ when false:
 
 
   proc main() =
-    setRender createDom
+    setRenderer createDom
 
   main()
 
@@ -97,7 +142,7 @@ when false:
       h1:
         text getCstring()
   proc main() =
-    setRender createDom
+    setRenderer createDom
   main()
 
 when false:
@@ -122,6 +167,6 @@ when false:
         # text b"{counter}"
 
   proc main() =
-    setRender createDom
+    setRenderer createDom
 
   main()
