@@ -49,7 +49,10 @@ var buildTable {.compileTime.} = toHashSet([
     "tbody", "td", "textarea", "tfoot", "th", "thead", "time",
     "title", "tr", "track", "tt", "u", "ul", "var", "video", "wbr"])
 
+var illegalTag {.compileTime.} = toHashSet(["body", "head", "html", "title", "script"])
+
 import std/sugar
+
 
 proc toString*[T](x: T): cstring {.importjs: "#.toString()".}
 
@@ -75,6 +78,40 @@ proc detect(monitor: Monitor) =
         inc changes
     if changes == 0:
       break
+
+proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
+                    count: var int,
+                    textCount: var int,
+                    node: NimNode,
+                    isCall = false): NimNode
+
+
+import std/tables
+var buildTableNode {.compileTime.}: Table[string, NimNode]
+var constructedTableNode {.compileTime.}: Table[string, NimNode]
+var countTableNode {.compileTime.}: Table[string, int]
+
+type
+  ComponentContext* = object
+    monitor: NimNode
+    parent: NimNode
+    res: string
+    count, textCount: int
+
+
+macro component*(x: untyped) =
+  # expectKind(x, nnkProcDef)
+  # let defs = newIdentDefs(ident"componentContext",
+  #                         newTree(nnkStaticTy, ident"ComponentContext")
+  #                        )
+  # x[3].insert(1, defs)
+  echo "here: ", x[0].getName
+  # result = x
+
+  echo x.repr
+
+  buildTableNode[x[0].getName] = x
+  countTableNode[x[0].getName] = 0
 
 
 proc apply(monitor: Monitor) =
@@ -103,10 +140,11 @@ proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var
   monitor.watchers.add watcher
   addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
 
-proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
+proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
-                    node: NimNode): NimNode =
+                    node: NimNode,
+                    isCall = false): NimNode =
   case node.kind
   of nnkStmtList, nnkStmtListExpr:
 
@@ -114,7 +152,7 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
 
     result = newNimNode(node.kind, node)
     for x in node:
-      let tmp = buildComponent(monitor, parentElement, res, count, textCount, x)
+      let tmp = construct(monitor, parentElement, res, count, textCount, x, isCall)
       if tmp.kind != nnkEmpty:
         result.add tmp
 
@@ -122,6 +160,8 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
   of nnkCallKinds - {nnkInfix}:
     let name = getName(node[0])
     if name in buildTable:
+      if name in illegalTag:
+        error(fmt"{name} is not allowed", node)
       textCount = 0 # todo
       # check the length of node
       var parentNode =
@@ -157,7 +197,6 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
                             `variable`, () => `variable`.toString(),
                             proc (x: Watcher, node: Element, y: var bool) =
                               y = getChecked(node, "checked");
-
                               x.value = y.toString()
                               apply(`monitor`)
                             )
@@ -180,15 +219,15 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
               # result.add newCall(bindSym"setAttr", parentNode, newStrLitNode(name), x[1])
           else:
             if isSingleTag:
-              doAssert false, fmt"A empty element({name}) is not allowed to have children"
-            result.add buildComponent(monitor, parentNode, part, partCount, textCount, x)
+              error(fmt"A empty element({name}) is not allowed to have children", x)
+            result.add construct(monitor, parentNode, part, partCount, textCount, x)
             res.add fmt"<{name}>{part}</{name}>"
         if isSingleTag:
           res.add ">"
       textCount = 0 # todo
     elif name == "text":
       if textCount == 1:
-        doAssert false, "The text node is allowed to use sequentially"
+         error("The text node is not allowed to use sequentially", node)
       inc textCount # todo
       case node[1].kind:
       of nnkStrLit:
@@ -199,42 +238,105 @@ proc buildComponent(monitor: NimNode, parentElement: NimNode, res: var string,
         var currentNode =
           if count == 0:
             quote do:
-              `parentElement`.firstChild #! Node
+              cast[Element](`parentElement`.firstChild) #! Node
           else:
             quote do:
               `parentElement`[`count`]
 
-        let tmp = node[1] # ! bug cannot inline node[1]
+        # ! bug cannot inline node[1]
+        let tmp = node[1]
         result = quote do:
           bindText(`monitor`, `currentNode`, () => `tmp`)
       inc count
     else:
-      doAssert false, fmt"2: {name}"
+      # if countTableNode[node[0].getName] == 0:
+      echo "there: ", node[0].getName
+      # echo buildTableNode[node[0].getName].treeRepr
+      # echo node.repr
+      # if countTableNode[node[0].getName] == 0:
+      const bodyPos = 6
+      let def = buildTableNode[node[0].getName]
+      echo def.treerepr
+      let body = def[bodyPos][0]
+      body.del(0)
+      echo body.repr
+      buildTableNode[node[0].getName][bodyPos][0] = construct(monitor, parentElement, res,
+                    count, textCount, body, isCall = true)
+      echo buildTableNode[node[0].getName][bodyPos][0].repr
+      # echo buildTableNode[node[0].getName][bodyPos][0].repr
+      # buildTableNode[node[0].getName][bodyPos][0] = buildTableNode[node[0].getName][bodyPos][0][1]
+
+      countTableNode[node[0].getName] = 1
+      result = quote do:
+          `node`
+      # else:
+      #   result = quote do:
+      #     `node`
+
+      # res.add ""
+      # result = newStmtList()
+
+      # var currentNode =
+      #   if count == 0:
+      #     quote do:
+      #       cast[Element](`parentElement`.firstChild) #! Node
+      #   else:
+      #     quote do:
+      #       `parentElement`[`count`]
+      # echo treeRepr(node)
+      # let contextNode = ComponentContext(monitor: monitor,
+      #                       parent: currentNode,
+      #                       )
+
+      # var newcall = newNimNode(nnkCall, node)
+      # newcall.add node[0]
+      # newcall.add contextNode
+
+      # for i in 1..<node.len:
+      #   newcall.add node[i]
+
+      # result.add newcall
+      # inc count
+      # doAssert false, fmt"2: {name}"
       # result = newEmptyNode()
   else:
     doAssert false, fmt"3: {node.kind}"
     # if node.len > 0:
     #   for i in node:
-    #     result = buildComponent(i, res, content)
+    #     result = construct(i, res, content)
     # else:
     #   result = node
 
+template build*(name, children: untyped): untyped =
+  # echo children.treeRepr
+  discard
+  # let context = ident"componentContext
+  #   construct(`context`.monitor,
+  #     `context`.parent, `context`.res,
+  #     `context`.count, # todo
+  #     `context`.textCount, children)
+
 macro buildHtml*(children: untyped): Element =
-  echo children.treeRepr
-  echo "-----------------build----------------------"
+  # echo children.treeRepr
+  # echo "-----------------build----------------------"
   let parentElement = genSym(nskLet, "parentElement")
   var res = ""
   var count = 0
   var textCount = 0
   var monitor = genSym(nskVar, "monitor")
-  let component = buildComponent(monitor, parentElement, res, count, textCount, children)
-  echo repr(component)
-  echo res
+  let component = construct(monitor, parentElement, res, count, textCount, children)
+  var defs = newStmtList()
+  for i in buildTableNode.values:
+    echo i.repr
+    defs.add i
+  # echo repr(component)
+  # echo res
   result = quote do:
     var `monitor` = Monitor()
     var fragment = document.createElement("template")
     fragment.innerHtml = `res`.cstring
     let `parentElement` = fragment.content
+    `defs`
     `component`
     apply(`monitor`)
     cast[Element](`parentElement`)
@@ -242,3 +344,4 @@ macro buildHtml*(children: untyped): Element =
 proc setRenderer*(render: proc(): Element, id = cstring"ROOT") =
   let root = document.getElementById(id)
   root.appendChild render()
+
