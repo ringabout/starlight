@@ -83,12 +83,14 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
                     node: NimNode,
-                    isCall = false): NimNode
+                    isCall: static bool = false,
+                    countNode = newEmptyNode()): NimNode
 
 
 import std/tables
 var buildTableNode {.compileTime.}: Table[string, NimNode]
 var constructedTableNode {.compileTime.}: Table[string, NimNode]
+var countNodeTable {.compileTime.}: Table[string, NimNode]
 var countTableNode {.compileTime.}: Table[string, int]
 
 type
@@ -144,7 +146,8 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
                     node: NimNode,
-                    isCall = false): NimNode =
+                    isCall: static bool = false,
+                    countNode = newEmptyNode()): NimNode =
   case node.kind
   of nnkStmtList, nnkStmtListExpr:
 
@@ -152,7 +155,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
 
     result = newNimNode(node.kind, node)
     for x in node:
-      let tmp = construct(monitor, parentElement, res, count, textCount, x, isCall)
+      let tmp = construct(monitor, parentElement, res, count, textCount, x)
       if tmp.kind != nnkEmpty:
         result.add tmp
 
@@ -165,12 +168,18 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
       textCount = 0 # todo
       # check the length of node
       var parentNode =
-        if count == 0:
-          quote do:
-            cast[Element](`parentElement`.firstChild)
+        when isCall:
+          var access = newNimNode(nnkBracketExpr)
+          access.add parentElement
+          access.add countNode
+          access
         else:
-          quote do:
-            `parentElement`[`count`]
+          if count == 0:
+            quote do:
+              cast[Element](`parentElement`.firstChild)
+          else:
+            quote do:
+              `parentElement`[`count`]
       inc count
       let isSingleTag = name in ["input", "br"]
       if node.len == 1:
@@ -249,26 +258,49 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
           bindText(`monitor`, `currentNode`, () => `tmp`)
       inc count
     else:
-      # if countTableNode[node[0].getName] == 0:
+      # 
       echo "there: ", node[0].getName
       # echo buildTableNode[node[0].getName].treeRepr
       # echo node.repr
-      # if countTableNode[node[0].getName] == 0:
       const bodyPos = 6
-      let def = buildTableNode[node[0].getName]
-      echo def.treerepr
-      let body = def[bodyPos][0]
-      body.del(0)
-      echo body.repr
-      buildTableNode[node[0].getName][bodyPos][0] = construct(monitor, parentElement, res,
-                    count, textCount, body, isCall = true)
-      echo buildTableNode[node[0].getName][bodyPos][0].repr
-      # echo buildTableNode[node[0].getName][bodyPos][0].repr
-      # buildTableNode[node[0].getName][bodyPos][0] = buildTableNode[node[0].getName][bodyPos][0][1]
+      if countTableNode[node[0].getName] == 0:
+        const paramsPos = 3
+        let def = buildTableNode[node[0].getName]
+        let passedCount = genSym(nskParam, "count")
+        let params = def[paramsPos]
+        let staticCount = newNimNode(nnkStaticTy)
+        staticCount.add ident"int"
+        params.insert(1, newIdentDefs(passedCount, ident"int"))
+      # let staticMonitor = newNimNode(nnkStaticTy)
+      # staticMonitor.add bindSym"Monitor"
+      # params.insert(2, newIdentDefs(ident(monitor.strVal), bindSym"Monitor"))
+      # let staticElement = newNimNode(nnkStaticTy)
+      # staticElement.add bindSym"Element"
+      # params.insert(3, newIdentDefs(ident(parentElement.strVal), bindSym"Node"))
+        echo def.treerepr
 
-      countTableNode[node[0].getName] = 1
+        let body = def[bodyPos][0]
+        body.del(0)
+        constructedTableNode[node[0].getName] = buildTableNode[node[0].getName].copy
+        buildTableNode[node[0].getName][bodyPos][0] = construct(monitor, parentElement, res,
+                      count, textCount, body, isCall = true, passedCount)
+        # echo buildTableNode[node[0].getName][bodyPos][0].repr
+        # echo buildTableNode[node[0].getName][bodyPos][0].repr
+        # buildTableNode[node[0].getName][bodyPos][0] = buildTableNode[node[0].getName][bodyPos][0][1]
+        countNodeTable[node[0].getName] = passedCount
+        countTableNode[node[0].getName] = 1
+      else:
+        let def = constructedTableNode[node[0].getName]
+        let body = def[bodyPos][0]
+        let passedCount = countNodeTable[node[0].getName]
+        discard construct(monitor, parentElement, res,
+                      count, textCount, body, isCall = true, passedCount)
+      node.insert(1, newLit(count-1))
+      # node.insert(2, monitor)
+      # node.insert(3, parentElement)
+      echo node.treeRepr
       result = quote do:
-          `node`
+        `node`
       # else:
       #   result = quote do:
       #     `node`
@@ -332,10 +364,10 @@ macro buildHtml*(children: untyped): Element =
   # echo repr(component)
   # echo res
   result = quote do:
-    var `monitor` = Monitor()
+    var `monitor` {.global.} = Monitor() # todo remove global ?
     var fragment = document.createElement("template")
     fragment.innerHtml = `res`.cstring
-    let `parentElement` = fragment.content
+    let `parentElement` {.global.} = fragment.content
     `defs`
     `component`
     apply(`monitor`)
