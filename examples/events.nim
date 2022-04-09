@@ -1,6 +1,7 @@
 import stardust, starutils
 
-import std/dom, std/sugar
+import aqua/web/doms
+import std/sugar
 proc createDom(): Element =
   var count = 0
   var name = cstring""

@@ -1,5 +1,5 @@
 import stardust, starutils
-import std/dom
+import aqua/web/doms
 
 
 proc createDom(): Element =

@@ -1,5 +1,5 @@
 import std/macros
-import std/dom
+import aqua/web/doms
 import std/strutils
 
 proc getName(n: NimNode): string =
