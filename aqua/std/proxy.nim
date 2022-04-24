@@ -35,7 +35,6 @@ proc setter(target: JsObject, key: cstring, value: JsObject) =
   console.log("setter: ", key, value) # trigger
   target[key] = value
 
-
 proc getter(target: JsObject, key: cstring): JsObject =
   console.log("getter: ", key) # track
   target[key]
@@ -88,7 +87,5 @@ template `raw=`*[T](x: Reactive[T], y: T) =
   else:
     x.value = y
 
-template watch(def: untyped, body: untyped) =
-  body
-
-
+proc watch*[T](x: Reactive[T], callback: proc ()) =
+  discard
