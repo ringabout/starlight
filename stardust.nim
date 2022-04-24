@@ -261,6 +261,13 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
       # 
       echo "there: ", node[0].getName
       # echo buildTableNode[node[0].getName].treeRepr
+      let temp = quote do:
+        `node`
+      echo "================================="
+      echo temp.treeRepr
+      echo symbol(temp[0]).getImpl.treeRepr
+      echo "================================="
+
       # echo node.repr
       const bodyPos = 6
       if countTableNode[node[0].getName] == 0:
@@ -349,8 +356,10 @@ template build*(name, children: untyped): untyped =
   #     `context`.textCount, children)
 
 macro buildHtml*(children: untyped): Element =
-  # echo children.treeRepr
-  # echo "-----------------build----------------------"
+  echo children.treeRepr
+  echo "++++++++++++++++++++++++++++++++++++++++++++"
+  echo callSite().treeRepr
+  echo "-----------------build----------------------"
   let parentElement = genSym(nskLet, "parentElement")
   var res = ""
   var count = 0
