@@ -1,2 +1,2 @@
 # stardust
-front end
+Another front-end framework.
