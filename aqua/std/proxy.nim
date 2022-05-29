@@ -1,5 +1,6 @@
 import std/jsconsole
 import jsffi2
+import seqs, weakmaps
 
 type
   Proxy[T] {.importc.} = ref object
@@ -13,6 +14,11 @@ type
   Handler = ref object
     construct: proc()
 
+var proxyStack = newJSeq[JsObject]()
+var rawToProxy = newWeakMap[JsObject, JsObject]()
+var proxyToRaw = newWeakMap[JsObject, JsObject]()
+
+
 type
   Descriptor = ref object
     `set`: proc (target: JsObject, key: cstring, value: JsObject)
@@ -24,19 +30,18 @@ proc defineProperty[T](obj: T, prop: cstring, descriptor: Descriptor) {.importjs
 
 proc newProxy[T](x: T, value: Descriptor): Proxy[T] {.importjs: """new Proxy(#, #)""".}
 
-# proc newProxy[T](x: T, value: ): Proxy[T] {.importjs: """new Proxy(#,
-# {set(target, prop, receiver) {
-#     console.log("changed");
-#     target[prop] = receiver;
-#   }}
-#   )""".}
+proc trigger() = discard
+
+proc track() = discard
 
 proc setter(target: JsObject, key: cstring, value: JsObject) =
   console.log("setter: ", key, value) # trigger
+  trigger()
   target[key] = value
 
 proc getter(target: JsObject, key: cstring): JsObject =
   console.log("getter: ", key) # track
+  track()
   target[key]
 
 # todo typedesc overload
@@ -87,5 +92,5 @@ template `raw=`*[T](x: Reactive[T], y: T) =
   else:
     x.value = y
 
-proc watch*[T](x: Reactive[T], callback: proc ()) =
+proc watch*(callback: proc ()) =
   discard

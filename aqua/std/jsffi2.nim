@@ -217,7 +217,6 @@ proc `==`*(x, y: JsRoot): bool {.importjs: "(# === #)".}
   ## like in JavaScript, so if your JsObjects are in fact JavaScript Objects,
   ## and not strings or numbers, this is a *comparison of references*.
 
-{.experimental.}
 macro `get`*(obj: JsObject, field: untyped): JsObject =
   ## Experimental dot accessor (get) for type JsObject.
   ## Returns the value of a property of name `field` from a JsObject `x`.

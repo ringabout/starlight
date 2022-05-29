@@ -17,6 +17,6 @@ console.log ?y
 y.value = 88
 console.log y.value
 
-watch(x, proc() =
+watch(proc() =
   console.log ?y
 )
