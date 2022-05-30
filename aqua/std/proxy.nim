@@ -19,7 +19,7 @@ type
 var effectStack = newJSeq[Effect]()
 var rawToProxy = newWeakMap[JsObject, JsObject]()
 var proxyToRaw = newWeakMap[JsObject, JsObject]()
-var effectsTable = newWeakMap[JsObject, Set[JsObject]]()
+var effectsTable = newWeakMap[JsObject, WeakMap[cstring, Set[Effect]]]()
 
 
 type
@@ -36,7 +36,18 @@ proc newProxy[T](x: T, value: Descriptor): Reactive[T] {.importjs: """new Proxy(
 proc trigger() = discard
 
 proc track(target: JsObject, key: cstring) =
-  discard
+  let size = effectStack.len
+  if size > 0:
+    let activeEffect = effectStack[size-1]
+    if target notin effectsTable:
+      effectsTable[target] = newWeakMap[cstring, Set[Effect]]()
+
+    if key notin effectsTable[target]:
+      effectsTable[target][key] = newJSet[Effect]()
+
+    if activeEffect notin effectsTable[target][key]:
+      effectsTable[target][key].add activeEffect
+
 
 template toAny(x: typed): JsObject =
   cast[JsObject](x)
@@ -60,6 +71,7 @@ proc newReactive*[T: ref](x: T): Reactive[T] =
     let descriptor = Descriptor(`set`: setter, `get`: getter)
     result = newProxy[T](x, descriptor)
     rawToProxy[toAny(x)] = toAny(result)
+    # proxyToRaw[toAny(result)] = toAny(x)
 
 # proc newReactive*[T: ref](x: typedesc[T]): Reactive[T] =
 #   let descriptor = Descriptor(`set`: setter, `get`: getter)
@@ -79,29 +91,12 @@ template `.?`*[T: ref](x: Reactive[T], y: untyped{ident}): untyped =
 template `:=`*[T](def: untyped, value: T): untyped =
   var def = newReactive(value)
 
-template `value`*[T](x: Reactive[T]): T =
-  when T is ref:
-    cast[T](x.value)
-  else:
-    x.value
 
-template `value=`*[T](x: Reactive[T], y: T) =
-  when T is ref:
-    cast[T](x.value) = y
-  else:
-    x.value = y
-
-template `raw`*[T](x: Reactive[T]): T =
-  when T is ref:
-    cast[T](x.value)
-  else:
-    x.value
-
-template `raw=`*[T](x: Reactive[T], y: T) =
-  when T is ref:
-    cast[T](x.value) = y
-  else:
-    x.value = y
+# template `raw`*[T](x: Reactive[T]): T =
+#   if toAny(x) in proxyToRaw:
+#     result = cast[T](proxyToRaw[toAny(x)])
+#   else:
+#     doAssert false, "Use newReactive to initalize"
 
 proc watch*(callback: Effect) =
   effectStack.add callback
