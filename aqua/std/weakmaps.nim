@@ -5,7 +5,7 @@ type
 proc newWeakMap*[K; V](): WeakMap[K, V] {.importjs: "new WeakMap()".}
 proc `[]`*[K, V](d: WeakMap[K, V], k: K): V {.importjs: "#.get(#)".}
 proc `[]=`*[K, V](d: WeakMap[K, V], k: K, v: V) {.importjs: "#.set(#, #)".}
-
+proc contains*[K, V](d: WeakMap[K, V], k: K): bool {.importjs: "#.has(#)".}
 
 when isMainModule:
   import jsconsole
