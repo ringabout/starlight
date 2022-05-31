@@ -27,7 +27,7 @@ Another front-end framework in Nim (working in progress). It directly compiles t
   x <- Counter(num: 1)
   x.?num += 1
 
-  y := Counter(card: Card(id: 16))
+  var y = newReactive Counter(card: Card(id: 16))
   watch:
     console.log "card: ", y.?card.id
 
