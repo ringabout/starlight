@@ -9,7 +9,7 @@ proc put*[K, V](d: Map[K, V], k: K, v: V) {.importjs: "#.set(#, #)".}
 
 proc newMap*[K, V](): Map[K, V] {.importjs: "new Map()".}
 
-proc contains*[K, V](d: Map[K, V], k: K): bool {.importjs: "#.hasOwnProperty(#)".}
+proc contains*[K, V](d: Map[K, V], k: K): bool {.importjs: "#.has(#)".}
 
 proc del*[K, V](d: Map[K, V], k: K) {.importjs: "delete #[#]".}
 

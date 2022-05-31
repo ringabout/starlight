@@ -47,17 +47,27 @@ proc track(target: JsObject, key: cstring) =
   let size = effectStack.len
   if size > 0:
     let activeEffect = effectStack[size-1]
+    
+    console.log target notin effectsTable, target, " -> ", effectsTable
+    
     if target notin effectsTable:
       effectsTable.put(target, newMap[cstring, Set[Effect]]())
 
     let depsMap = effectsTable.get(target)
 
+    # console.log "before--------------------------"
+    # console.log effectsTable
+    # console.log "aftere--------------------------"
+
     if key notin depsMap:
+      # console.log effectsTable
+      # console.log "key", key
       depsMap.put(key, newJSet[Effect]())
 
     let effectSet = depsMap.get(key)
     if activeEffect notin effectSet:
       effectSet.add activeEffect
+      # console.log effectsTable
 
 template toAny(x: typed): JsObject =
   cast[JsObject](x)
@@ -152,12 +162,19 @@ template `:=`*[T](def: untyped, value: T): untyped =
 #   else:
 #     doAssert false, "Use newReactive to initalize"
 
-proc watch*(callback: Effect) =
+proc watchImpl(callback: Effect) =
   effectStack.add callback
+  console.log "here2: ", effectsTable
   try:
+    console.log "here3: ", effectsTable
     callback()
+    console.log "here4: ", effectsTable
   finally:
     discard effectStack.pop()
+
+template watch*(x: typed) =
+  watchImpl proc () =
+    x
 
 when isMainModule:
   type
@@ -167,9 +184,17 @@ when isMainModule:
       num: int
       card: Card
 
-  x := Counter(num: 0)
-  watch proc () =
+  var x = newReactive Counter(num: 0)
+  watch:
     console.log "run: ", x.?num
+    # watch:
+    #   console.log "run2: ", x.?num
+
+  console.log "here: ", effectsTable
+
+  watch:
+    console.log "run2: ", x.?num
+
 
   x.?num += 1
   x.?num = 182
@@ -182,12 +207,11 @@ when isMainModule:
 
   # x.?card.id += 1
 
-  y := Counter(card: Card(id: 16))
-  watch proc () =
-    console.log "card: ", y.?card.id
+  # y := Counter(card: Card(id: 16))
+  # watch:
+  #   console.log "card: ", y.?card.id
 
-  y.?card.id += 1
+  # y.?card.id += 1
 
-  console.log y
-  y <- Counter(card: Card(id: -1))
-  console.log y
+  # y <- Counter(card: Card(id: -1))
+
