@@ -1,4 +1,4 @@
-# stardust
+# starlight
 Another front-end framework in Nim (working in progress). It directly compiles to the `DOM` and uses `Proxy` to implement reactivity.
 
 ## Reactivity
