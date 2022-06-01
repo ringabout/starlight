@@ -11,7 +11,7 @@ type
     num: int
     card: Card
 
-var x = newReactive Counter(num: 0)
+var x = reactive Counter(num: 0) # = x := Counter(num: 0)
 watch:
   console.log "run: ", x.?num
 
@@ -20,20 +20,20 @@ console.log "here: ", effectsTable
 watch:
   console.log "run2: ", x.?num
 
-
+# use `.?` to access the attributes of Reactive
 x.?num += 1
 x.?num = 182
 
-x <- Counter(num: 1)
+x <- Counter(num: 1) # reassign; complete replacement
 x.?num += 1
 
-var y = newReactive Counter(card: Card(id: 16))
+var y = reactive Counter(card: Card(id: 16))
 watch:
   console.log "card: ", y.?card.id
 
 y.?card.id += 1
 
-y <- Counter(card: Card(id: -1))
+y <- Counter(card: Card(id: -1)) 
 ```
 
 ### primitives
