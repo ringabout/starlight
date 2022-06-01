@@ -6,17 +6,20 @@ type
   Proxy[T] {.importc.} = ref object
 
   Reactive[T] {.importc.} = ref object
+    raw: T
     when T is ref:
-      raw: T
       value: Proxy[T]
     else:
-      raw: T
       deps: Set[Effect]
 
   Handler = ref object
     construct: proc()
 
   Effect = proc ()
+
+  Primitive = SomeNumber|cstring
+
+
 
 var effectStack = newJSeq[Effect]()
 var rawToProxy = newMap[JsObject, JsObject]()
@@ -47,46 +50,39 @@ proc track(target: JsObject, key: cstring) =
   let size = effectStack.len
   if size > 0:
     let activeEffect = effectStack[size-1]
-    
-    console.log target notin effectsTable, target, " -> ", effectsTable
-    
     if target notin effectsTable:
       effectsTable.put(target, newMap[cstring, Set[Effect]]())
 
     let depsMap = effectsTable.get(target)
 
-    # console.log "before--------------------------"
-    # console.log effectsTable
-    # console.log "aftere--------------------------"
-
     if key notin depsMap:
-      # console.log effectsTable
-      # console.log "key", key
       depsMap.put(key, newJSet[Effect]())
 
     let effectSet = depsMap.get(key)
     if activeEffect notin effectSet:
       effectSet.add activeEffect
-      # console.log effectsTable
 
 template toAny(x: typed): JsObject =
   cast[JsObject](x)
 
-proc refSetter(target: JsObject, key: cstring, value: JsObject) = discard
-  # # check old value
-  # target[key] = value
-  # trigger(target, key)
+template `raw`*[T](x: Reactive[T]): T =
+  x.raw
 
-proc refGetter(target: JsObject, key: cstring): JsObject = discard
-  # track(target, key)
-  # result = target[key] # todo Reflect.get
-
-proc `value`[T: not ref](x: Reactive[T]): T =
-  result = x.raw
-
-proc `value=`[T: not ref](x: Reactive[T], y: T) =
+template `raw=`*[T](x: Reactive[T], y: T): T =
   x.raw = y
 
+proc `value`*[T: Primitive](x: Reactive[T]): T =
+  let size = effectStack.len
+  if size > 0:
+    let activeEffect = effectStack[size-1]
+    if activeEffect notin x.deps:
+      x.deps.add activeEffect
+  result = x.raw
+
+proc `value=`*[T: Primitive](x: Reactive[T], y: T) =
+  x.raw = y
+  for effect in x.deps:
+    effect()
 
 proc reactiveSetter(target: JsObject, key: cstring, value: JsObject, receiver: JsObject) =
   # check old value
@@ -116,7 +112,7 @@ proc newReactive2(x: JsObject): Reactive[JsObject] =
     rawToProxy.put(x, toAny(result))
 
 # todo typedesc overload
-proc newReactive*[T: ref](x: T): Reactive[T] =
+proc reactive*[T: ref](x: T): Reactive[T] =
   if toAny(x) in rawToProxy:
     result = cast[Reactive[T]](rawToProxy.get(toAny(x)))
   else:
@@ -125,12 +121,15 @@ proc newReactive*[T: ref](x: T): Reactive[T] =
     rawToProxy.put(toAny(x), toAny(result))
     # proxyToRaw[toAny(result)] = toAny(x)
 
-# proc newReactive*[T: ref](x: typedesc[T]): Reactive[T] =
+proc reactive*[T: Primitive](x: T): Reactive[T] =
+  result = Reactive[T](raw: x, deps: newJSet[Effect]())
+
+# proc reactive*[T: ref](x: typedesc[T]): Reactive[T] =
 #   let descriptor = Descriptor(`set`: setter, `get`: getter)
 #   let proxy = newProxy[T](new T, descriptor)
 #   result = Reactive[T](value: proxy)
 
-# proc newReactive*[T: not ref](x: T): Reactive[T] =
+# proc reactive*[T: not ref](x: T): Reactive[T] =
 #   let descriptor = Descriptor(`set`: setter, `get`: getter)
 #   result = Reactive[T](value: x)
 
@@ -140,7 +139,7 @@ template `.?`*[T: ref](x: Reactive[T], y: untyped{ident}): untyped =
 proc reassign[T](dest: var Reactive[T], src: T) =
   when T is ref:
     let raw = dest.raw
-    dest = newReactive(src)
+    dest = reactive(src)
     let effects = effectsTable.get(toAny(raw))
     effectsTable.put(toAny(src), effects)
   else:
@@ -153,22 +152,22 @@ template `<-`*[T](dest: var Reactive[T], src: T) =
 #   x.value
 
 template `:=`*[T](def: untyped, value: T): untyped =
-  var def = newReactive(value)
+  var def = reactive(value)
 
 
 # template `raw`*[T](x: Reactive[T]): T =
 #   if toAny(x) in proxyToRaw:
 #     result = cast[T](proxyToRaw[toAny(x)])
 #   else:
-#     doAssert false, "Use newReactive to initalize"
+#     doAssert false, "Use reactive to initalize"
 
 proc watchImpl(callback: Effect) =
   effectStack.add callback
-  console.log "here2: ", effectsTable
+  # console.log "here2: ", effectsTable
   try:
-    console.log "here3: ", effectsTable
+    # console.log "here3: ", effectsTable
     callback()
-    console.log "here4: ", effectsTable
+    # console.log "here4: ", effectsTable
   finally:
     discard effectStack.pop()
 
@@ -184,13 +183,12 @@ when isMainModule:
       num: int
       card: Card
 
-  var x = newReactive Counter(num: 0)
+  var x = reactive Counter(num: 0)
   watch:
     console.log "run: ", x.?num
     # watch:
     #   console.log "run2: ", x.?num
 
-  console.log "here: ", effectsTable
 
   watch:
     console.log "run2: ", x.?num
@@ -207,11 +205,19 @@ when isMainModule:
 
   # x.?card.id += 1
 
-  # y := Counter(card: Card(id: 16))
-  # watch:
-  #   console.log "card: ", y.?card.id
+  y := Counter(card: Card(id: 16))
+  watch:
+    console.log "card: ", y.?card.id
 
-  # y.?card.id += 1
+  y.?card.id += 1
 
-  # y <- Counter(card: Card(id: -1))
+  y <- Counter(card: Card(id: -1))
 
+  console.log effectsTable
+
+  block:
+    var x = reactive(1)
+    watch:
+      console.log x.value
+
+    x <- 3

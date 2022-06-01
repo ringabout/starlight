@@ -35,3 +35,29 @@ Another front-end framework in Nim (working in progress). It directly compiles t
 
   y <- Counter(card: Card(id: -1))
   ```
+
+### primitives
+```nim
+  proc createDom(): Element =
+    var count = reactive(0)
+    buildHtml:
+      text count
+      button(onClick = (e: Event) => (count += 1)): text "Count"
+
+  setRenderer createDom
+```
+
+### ref object
+```nim
+  type
+    Counter = ref object
+      c: int
+
+  proc createDom(): Element =
+    var count = reactive(Counter(c: 12))
+    buildHtml:
+      text count.?c
+      button(onClick = (e: Event) => (count.?c += 1)): text "Count"
+
+  setRenderer createDom
+```

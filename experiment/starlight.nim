@@ -1,5 +1,6 @@
 import std/macros
 import aqua/web/doms
+import aqua/std/proxy
 import std/strutils
 
 proc getName(n: NimNode): string =

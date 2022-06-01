@@ -64,7 +64,7 @@ proc validJsName(name: string): bool =
     if chr notin {'A'..'Z','a'..'z','_','$','0'..'9'}:
       return false
 
-template mangleJsName(name: cstring): cstring =
+template mangleJsName(name: cstring): string =
   inc nameCounter
   "mangledName" & $nameCounter
 
@@ -232,7 +232,7 @@ macro `get`*(obj: JsObject, field: untyped): JsObject =
       helper(`obj`)
   else:
     if not mangledNames.hasKey($field):
-      mangledNames[$field] = $mangleJsName($field)
+      mangledNames[$field] = mangleJsName($field)
     let importString = "#." & mangledNames[$field]
     result = quote do:
       proc helper(o: JsObject): JsObject
@@ -301,7 +301,7 @@ macro `get`*[K: cstring, V](obj: JsAssoc[K, V],
     importString = "#." & $field
   else:
     if not mangledNames.hasKey($field):
-      mangledNames[$field] = $mangleJsName($field)
+      mangledNames[$field] = mangleJsName($field)
     importString = "#." & mangledNames[$field]
   result = quote do:
     proc helper(o: type(`obj`)): `obj`.V
@@ -318,7 +318,7 @@ macro `set`*[K: cstring, V](obj: JsAssoc[K, V],
     importString = "#." & $field & " = #"
   else:
     if not mangledNames.hasKey($field):
-      mangledNames[$field] = $mangleJsName($field)
+      mangledNames[$field] = mangleJsName($field)
     importString = "#." & mangledNames[$field] & " = #"
   result = quote do:
     proc helper(o: type(`obj`), v: `obj`.V)
