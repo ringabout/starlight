@@ -40,7 +40,7 @@ y <- Counter(card: Card(id: -1))
 ```nim
 proc createDom(): Element =
   var count = reactive(0)
-  buildHtml:
+  buildHtml(`div`):
     text count
     button(onClick = (e: Event) => (count += 1)): text "Count"
 
@@ -55,7 +55,7 @@ type
 
 proc createDom(): Element =
   var count = reactive(Counter(c: 12))
-  buildHtml:
+  buildHtml(`div`):
     text count.?c
     button(onClick = (e: Event) => (count.?c += 1)): text "Count"
 
