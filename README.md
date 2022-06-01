@@ -1,5 +1,5 @@
 # stardust
-Another front-end framework in Nim (working in progress). It directly compiles to the dom.
+Another front-end framework in Nim (working in progress). It directly compiles to the dom use Proxy to implement reactivity.
 
 ## Reactivity
 
