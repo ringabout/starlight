@@ -13,8 +13,8 @@ proc contains*[K, V](d: Map[K, V], k: K): bool {.importjs: "#.has(#)".}
 
 proc del*[K, V](d: Map[K, V], k: K) {.importjs: "delete #[#]".}
 
-iterator items*[K, V](d: Map[K, V]): K =
-  var kkk: K
-  {.emit: ["for (", kkk, " in ", d, ") {"].}
-  yield kkk
-  {.emit: ["}"].}
+# iterator items*[K, V](d: Map[K, V]): K =
+#   var kkk: K
+#   {.emit: ["for (", kkk, " in ", d, ") {"].}
+#   yield kkk
+#   {.emit: ["}"].}

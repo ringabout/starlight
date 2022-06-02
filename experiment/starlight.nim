@@ -68,18 +68,6 @@ type
     watchers: seq[Watcher]
 
 
-proc detect(monitor: Monitor) =
-  while true:
-    var changes = 0
-    for w in monitor.watchers:
-      let value = w.fn()
-      if value != w.value:
-        w.callback(value)
-        w.value = value
-        inc changes
-    if changes == 0:
-      break
-
 proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
@@ -116,26 +104,23 @@ macro component*(x: untyped) =
   countTableNode[x[0].getName] = 0
 
 
-proc apply(monitor: Monitor) =
-  discard setTimeout(() => detect(monitor), 10)
-
 proc setAttr[T: cstring|bool](x: Element; name: cstring, value: T) {.importjs: "#[#] = #".}
 proc getAttr(x: Element; name: cstring): cstring {.importjs: "#[#]".}
 
 proc getChecked(x: Element; name: cstring): bool {.importjs: "#[#]".}
+
+proc parseInt(x: cstring): int {.importjs: "parseInt(#)".}
 
 
 proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var bool,
                 getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var bool)) =
   let watcher = Watcher(fn: getCallBack, callback: 
     (value: cstring) => (element.setAttr(name, if value == "true": true else: false)), value: "")
-  monitor.watchers.add watcher
   addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
 
 proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var cstring,
                 getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var cstring)) =
   let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
-  monitor.watchers.add watcher
   addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
 
 
@@ -147,14 +132,22 @@ template textImpl(x: Reactive[cstring]): cstring =
 template textImpl(x: Reactive[int]): cstring =
   toString(x.value)
 
-template textImpl[T](x: T): T =
-  x
+template parseImpl[T](x: Reactive[T], y: cstring) =
+  when T is int:
+    if y.len == 0:
+      x.value = 0
+    else:
+      x.value = parseInt(y)
+  elif T is cstring:
+    x.value = y
+  else:
+    assert false, "Not implemented"
 
-template watch2(x: typed) {.dirty.} =
-  watchImpl proc () =
+template textImpl[T](x: T): cstring =
+  when T is cstring:
     x
-
-import std/genasts
+  else:
+    toString(x)
 
 proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
@@ -209,6 +202,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         if isSingleTag:
           res.add fmt"<{name}"
         result = newStmtList()
+        echo "=>", " ", node.treeRepr
         for i in 1..<node.len:
           let x = node[i]
           if x.kind == nnkExprEqExpr:
@@ -222,21 +216,25 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                             proc (x: Watcher, node: Element, y: var bool) =
                               y = getChecked(node, "checked");
                               x.value = y.toString()
-                              apply(`monitor`)
                             )
               elif name == "onClick":
                 result.add quote do:
-                  addEventListener(`parentNode`, "click", (ev: Event) => (`variable`(ev); apply(`monitor`)))
+                  addEventListener(`parentNode`, "click", (ev: Event) => (`variable`(ev)))
               else:
                 let newName = name[2..^1].toLowerAscii
+                echo variable.treeRepr, " ", newName
                 result.add quote do:
-                  bindInput(`monitor`, `parentNode`, `newName`.cstring,
-                            `variable`, () => `variable`,
-                            proc (x: Watcher, node: Element, y: var cstring) =
-                              x.value = getAttr(node, `newName`.cstring);
-                              y = x.value;
-                              apply(`monitor`)
-                            )
+                  let node = `parentNode` # todo why need a new copy? consider make renderDom a closure?
+                  addEventListener(`parentNode`, "input", (ev: Event) => (parseImpl(`variable`,
+                                   getAttr(node, `newName`.cstring))))
+                  # let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
+                  # addEventListener(element, "input", (ev: Event) => (`variable` = getAttr(node, `newName`.cstring)))
+                #   bindInput(`monitor`, `parentNode`, `newName`.cstring,
+                #             `variable`, () => `variable`,
+                #             proc (x: Watcher, node: Element, y: var cstring) =
+                #               x.value = getAttr(node, `newName`.cstring);
+                #               y = x.value
+                #             )
             else:
               # todo x1.kind
               res.add fmt" {name}={x[1].strVal}"
@@ -369,13 +367,12 @@ macro buildHtml*(children: untyped): Element =
   # echo repr(component)
   # echo res
   result = quote do:
-    var `monitor` {.global.} = Monitor() # todo remove global ?
+    var `monitor` = Monitor() # todo remove global ?
     var fragment = document.createElement("template")
     fragment.innerHtml = `res`.cstring
-    let `parentElement` {.global.} = fragment.content
+    let `parentElement` = fragment.content
     `defs`
     `component`
-    apply(`monitor`)
     cast[Element](`parentElement`)
   echo result.repr
 

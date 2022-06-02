@@ -114,7 +114,7 @@ proc newReactive2(x: JsObject): Reactive[JsObject] =
 
 # todo typedesc overload
 proc reactive*[T: ref](x: T): Reactive[T] =
-  if toAny(x) in rawToProxy:
+  if rawToProxy.contains(toAny(x)): # todo bug generics in
     result = cast[Reactive[T]](rawToProxy.get(toAny(x)))
   else:
     let proxy = newProxy[T](x, descriptor)
