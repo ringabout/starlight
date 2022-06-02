@@ -20,56 +20,56 @@ when not defined(js):
 
 type Console* = ref object of JsRoot
 
-proc log*(console: Console) {.importc, varargs.}
+proc log*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/log
 
-proc debug*(console: Console) {.importc, varargs.}
+proc debug*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/debug
 
-proc info*(console: Console) {.importc, varargs.}
+proc info*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/info
 
-proc error*(console: Console) {.importc, varargs.}
+proc error*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/error
 
 template exception*(console: Console, args: varargs[untyped]) =
   ## Alias for `console.error()`.
   error(console, args)
 
-proc trace*(console: Console) {.importc, varargs.}
+proc trace*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/trace
 
-proc warn*(console: Console) {.importc, varargs.}
+proc warn*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/warn
 
-proc clear*(console: Console) {.importc, varargs.}
+proc clear*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/clear
 
-proc count*(console: Console, label = "".cstring) {.importc.}
+proc count*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/count
 
-proc countReset*(console: Console, label = "".cstring) {.importc.}
+proc countReset*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/countReset
 
-proc group*(console: Console, label = "".cstring) {.importc.}
+proc group*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/group
 
-proc groupCollapsed*(console: Console, label = "".cstring) {.importc.}
+proc groupCollapsed*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/en-US/docs/Web/API/Console/groupCollapsed
 
-proc groupEnd*(console: Console) {.importc.}
+proc groupEnd*(console: Console) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/groupEnd
 
-proc time*(console: Console, label = "".cstring) {.importc.}
+proc time*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/time
 
-proc timeEnd*(console: Console, label = "".cstring) {.importc.}
+proc timeEnd*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/timeEnd
 
-proc timeLog*(console: Console, label = "".cstring) {.importc.}
+proc timeLog*(console: Console, label = "".cstring) {.importcpp.}
   ## https://developer.mozilla.org/docs/Web/API/Console/timeLog
 
-proc table*(console: Console) {.importc, varargs.}
+proc table*(console: Console) {.importcpp, varargs.}
   ## https://developer.mozilla.org/docs/Web/API/Console/table
 
 type InstantiationInfo = tuple[filename: string, line: int, column: int]
@@ -100,15 +100,15 @@ template jsAssert*(console: Console; assertion) =
   {.line: loc.}:
     {.emit: ["console.assert(", assertion, ", ", msg, ");"].}
 
-func dir*(console: Console; obj: auto) {.importc.}
+func dir*(console: Console; obj: auto) {.importcpp.}
   ## https://developer.mozilla.org/en-US/docs/Web/API/Console/dir
 
-func dirxml*(console: Console; obj: auto) {.importc.}
+func dirxml*(console: Console; obj: auto) {.importcpp.}
   ## https://developer.mozilla.org/en-US/docs/Web/API/Console/dirxml
 
-func timeStamp*(console: Console; label: cstring) {.importc.}
+func timeStamp*(console: Console; label: cstring) {.importcpp.}
   ## https://developer.mozilla.org/en-US/docs/Web/API/Console/timeStamp
   ##
   ## ..warning:: non-standard
 
-var console* {.importc, nodecl.}: Console
+var console* {.importcpp, nodecl.}: Console

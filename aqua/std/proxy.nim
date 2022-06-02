@@ -5,7 +5,7 @@ import seqs, weakmaps, sets2, maps
 type
   Proxy[T] {.importc.} = ref object
 
-  Reactive[T] {.importc.} = ref object
+  Reactive*[T] {.importc.} = ref object
     raw: T
     when T is ref:
       value: Proxy[T]
@@ -15,9 +15,9 @@ type
   Handler = ref object
     construct: proc()
 
-  Effect = proc ()
+  Effect* = proc ()
 
-  Primitive = SomeNumber|cstring
+  Primitive* = SomeNumber|cstring
 
 
 
@@ -81,7 +81,8 @@ proc `value`*[T: Primitive](x: Reactive[T]): T =
 
 proc `value=`*[T: Primitive](x: Reactive[T], y: T) =
   x.raw = y
-  for effect in x.deps:
+  # bug items must exist
+  for effect in items(x.deps):
     effect()
 
 proc reactiveSetter(target: JsObject, key: cstring, value: JsObject, receiver: JsObject) =
@@ -161,7 +162,7 @@ template `:=`*[T](def: untyped, value: T): untyped =
 #   else:
 #     doAssert false, "Use reactive to initalize"
 
-proc watchImpl(callback: Effect) =
+proc watchImpl*(callback: Effect) =
   effectStack.add callback
   # console.log "here2: ", effectsTable
   try:

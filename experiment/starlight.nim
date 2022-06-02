@@ -110,7 +110,6 @@ macro component*(x: untyped) =
   # x[3].insert(1, defs)
   echo "here: ", x[0].getName
   # result = x
-
   echo x.repr
 
   buildTableNode[x[0].getName] = x
@@ -119,10 +118,6 @@ macro component*(x: untyped) =
 
 proc apply(monitor: Monitor) =
   discard setTimeout(() => detect(monitor), 10)
-
-proc bindText*(monitor: Monitor, element: Element, fn: proc (): cstring) =
-  let watcher = Watcher(fn: fn, callback: (value: cstring) => (element.textContent = value), value: "")
-  monitor.watchers.add watcher
 
 proc setAttr[T: cstring|bool](x: Element; name: cstring, value: T) {.importjs: "#[#] = #".}
 proc getAttr(x: Element; name: cstring): cstring {.importjs: "#[#]".}
@@ -142,6 +137,24 @@ proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var
   let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
   monitor.watchers.add watcher
   addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
+
+
+# proc text[T: Primitive](x: Reactive[T]): 
+
+template textImpl(x: Reactive[cstring]): cstring =
+  x.value
+
+template textImpl(x: Reactive[int]): cstring =
+  toString(x.value)
+
+template textImpl[T](x: T): T =
+  x
+
+template watch2(x: typed) {.dirty.} =
+  watchImpl proc () =
+    x
+
+import std/genasts
 
 proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
                     count: var int,
@@ -175,6 +188,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
           access.add countNode
           access
         else:
+          echo "=>", name
           if count == 0:
             quote do:
               cast[Element](`parentElement`.firstChild)
@@ -244,6 +258,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         res.add node[1].strVal
         result = newEmptyNode()
       else:
+        echo node[1].kind
         res.add " "
         var currentNode =
           if count == 0:
@@ -255,20 +270,15 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
 
         # ! bug cannot inline node[1]
         let tmp = node[1]
+        # textImpl
+        let textCall = newCall(bindSym"textImpl", tmp)
         result = quote do:
-          bindText(`monitor`, `currentNode`, () => `tmp`)
+          proc catchElement(x: Element): Effect =
+            result = proc () =
+              x.textContent = `textCall`
+          watchImpl catchElement(`currentNode`)
       inc count
     else:
-      # 
-      echo "there: ", node[0].getName
-      # echo buildTableNode[node[0].getName].treeRepr
-      let temp = quote do:
-        `node`
-      echo "================================="
-      echo temp.treeRepr
-      echo symbol(temp[0]).getImpl.treeRepr
-      echo "================================="
-
       # echo node.repr
       const bodyPos = 6
       if countTableNode[node[0].getName] == 0:
@@ -279,22 +289,12 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         let staticCount = newNimNode(nnkStaticTy)
         staticCount.add ident"int"
         params.insert(1, newIdentDefs(passedCount, ident"int"))
-      # let staticMonitor = newNimNode(nnkStaticTy)
-      # staticMonitor.add bindSym"Monitor"
-      # params.insert(2, newIdentDefs(ident(monitor.strVal), bindSym"Monitor"))
-      # let staticElement = newNimNode(nnkStaticTy)
-      # staticElement.add bindSym"Element"
-      # params.insert(3, newIdentDefs(ident(parentElement.strVal), bindSym"Node"))
-        echo def.treerepr
 
         let body = def[bodyPos][0]
         body.del(0)
         constructedTableNode[node[0].getName] = buildTableNode[node[0].getName].copy
         buildTableNode[node[0].getName][bodyPos][0] = construct(monitor, parentElement, res,
                       count, textCount, body, isCall = true, passedCount)
-        # echo buildTableNode[node[0].getName][bodyPos][0].repr
-        # echo buildTableNode[node[0].getName][bodyPos][0].repr
-        # buildTableNode[node[0].getName][bodyPos][0] = buildTableNode[node[0].getName][bodyPos][0][1]
         countNodeTable[node[0].getName] = passedCount
         countTableNode[node[0].getName] = 1
       else:
@@ -306,7 +306,6 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
       node.insert(1, newLit(count-1))
       # node.insert(2, monitor)
       # node.insert(3, parentElement)
-      echo node.treeRepr
       result = quote do:
         `node`
       # else:
@@ -357,10 +356,6 @@ template build*(name, children: untyped): untyped =
   #     `context`.textCount, children)
 
 macro buildHtml*(children: untyped): Element =
-  echo children.treeRepr
-  echo "++++++++++++++++++++++++++++++++++++++++++++"
-  echo callSite().treeRepr
-  echo "-----------------build----------------------"
   let parentElement = genSym(nskLet, "parentElement")
   var res = ""
   var count = 0
@@ -382,6 +377,7 @@ macro buildHtml*(children: untyped): Element =
     `component`
     apply(`monitor`)
     cast[Element](`parentElement`)
+  echo result.repr
 
 proc setRenderer*(render: proc(): Element, id = cstring"ROOT") =
   let root = document.getElementById(id)
