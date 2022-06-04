@@ -38,11 +38,58 @@ when false:
 
   setRenderer createDom
 
-when true:
+when false:
   proc createDom(): Element =
     var count = reactive 0
     buildHtml:
       `input`(`type`="number", onValue=count)
       button(onClick = (e: Event) => (count += 1)): text count
+
+  setRenderer createDom
+
+when false:
+  proc createDom(): Element =
+    var count = reactive 0
+    var name = reactive cstring""
+    let call = (ev: Event) => (count += 1)
+    buildHtml:
+      text "Enter word and press enter:"
+      input(onValue=name)
+      br()
+      text name
+      br()
+      button(onClick=call):
+        text "Click me!"
+      text count
+  setRenderer createDom
+
+when false:
+  proc createDom(): Element =
+    var name = reactive cstring"world"
+    var active = reactive false
+    buildHtml:
+      text "Enter name: "
+      input(`type`="text", onValue=name)
+      text fmt"Hello {name}!"
+      br()
+      input(`type`="checkbox", onChecked=active)
+      text active
+  setRenderer createDom
+
+when true:
+  var name = reactive cstring"Hello world"
+  proc buildText(x: cstring) {.component.} =
+    build(`div`):
+      p: text x
+      `div`: children()
+
+  proc createDom(): Element =
+    buildHtml(`div`):
+      h1: text name
+      buildText("ciao"):
+        p: text "hey hey hey"
+        h3: text "yui"
+      buildText("set out")
+      h2: text "fine"
 
   setRenderer createDom

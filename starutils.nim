@@ -1,4 +1,5 @@
 import std/macros
+import aqua/std/proxy
 
 when false:
   proc parseBindingString(res: var string, count: var int, parentElement: NimNode,
@@ -55,6 +56,15 @@ when false:
 proc jsTypeof*(x: cstring): cstring {.importjs: "typeof(#)".}
 proc toUpperCase*(x: cstring): cstring {.importjs: "#.toUpperCase()".}
 
+template toStringImpl(x: Reactive[cstring]): cstring =
+  x.value
+
+template toStringImpl(x: Reactive[int]): cstring =
+  toString(x.value)
+
+template toStringImpl[T](x: T): cstring =
+  toString(x)
+
 proc parseFormatString(s: string, openChar = '{', closeChar = '}'): NimNode =
   if s.len == 0:
     result = newStrLitNode("")
@@ -71,7 +81,7 @@ proc parseFormatString(s: string, openChar = '{', closeChar = '}'): NimNode =
           inc i
           while i < s.len:
             if s[i] == closeChar:
-              stringNode.add newCall(ident"toString", parseExpr(part))
+              stringNode.add newCall(bindSym"toStringImpl", parseExpr(part))
               part.setLen(0)
               inc i
               break

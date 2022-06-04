@@ -17,7 +17,7 @@ type
 
   Effect* = proc ()
 
-  Primitive* = SomeNumber|cstring
+  Primitive* = SomeNumber|cstring|bool
 
 
 

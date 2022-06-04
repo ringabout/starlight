@@ -2,6 +2,7 @@ import std/macros
 import aqua/web/doms
 import aqua/std/proxy
 import std/strutils
+import aqua/std/jsconsole
 
 proc getName(n: NimNode): string =
   case n.kind
@@ -24,6 +25,8 @@ proc getName(n: NimNode): string =
   of nnkOpenSymChoice, nnkClosedSymChoice:
     result = getName(n[0])
   else:
+    echo n.treeRepr
+    echo n.repr
     expectKind(n, nnkIdent)
 
 import std/[sets, strformat]
@@ -59,21 +62,14 @@ proc toString*[T](x: T): cstring {.importjs: "#.toString()".}
 
 proc concat*(x1, x2: cstring): cstring {.importjs: "(# + #)".}
 
-type
-  Watcher = ref object
-    fn: proc (): cstring
-    callback: proc (value: cstring) {.closure.}
-    value: cstring
-  Monitor = ref object
-    watchers: seq[Watcher]
 
-
-proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
+proc construct(parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
                     node: NimNode,
                     isCall: static bool = false,
-                    countNode = newEmptyNode()): NimNode
+                    countNode = newEmptyNode(),
+                    passedChildren = newEmptyNode()): NimNode
 
 
 import std/tables
@@ -84,11 +80,11 @@ var countTableNode {.compileTime.}: Table[string, int]
 
 type
   ComponentContext* = object
-    monitor: NimNode
     parent: NimNode
     res: string
     count, textCount: int
 
+proc replaceChild*(n: Node, newNode, oldNode: Element) {.importcpp.}
 
 macro component*(x: untyped) =
   # expectKind(x, nnkProcDef)
@@ -111,23 +107,13 @@ proc getChecked(x: Element; name: cstring): bool {.importjs: "#[#]".}
 
 proc parseInt(x: cstring): int {.importjs: "parseInt(#)".}
 
-
-proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var bool,
-                getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var bool)) =
-  let watcher = Watcher(fn: getCallBack, callback: 
-    (value: cstring) => (element.setAttr(name, if value == "true": true else: false)), value: "")
-  addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
-
-proc bindInput*(monitor: Monitor, element: Element, name: cstring, variable: var cstring,
-                getCallBack: proc (): cstring, setCallBack: proc(x: Watcher, node: Element, y: var cstring)) =
-  let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
-  addEventListener(element, "input", (ev: Event) => setCallBack(watcher, element, variable))
-
-
-# proc text[T: Primitive](x: Reactive[T]): 
+proc `[]=`*(n: Node, count: int, child: Element) {.importjs: "#[#] = #".}
 
 template textImpl(x: Reactive[cstring]): cstring =
   x.value
+
+template textImpl(x: Reactive[bool]): cstring =
+  toString(x.value)
 
 template textImpl(x: Reactive[int]): cstring =
   toString(x.value)
@@ -138,6 +124,13 @@ template parseImpl[T](x: Reactive[T], y: cstring) =
       x.value = 0
     else:
       x.value = parseInt(y)
+  elif T is bool:
+    if y == cstring"true":
+      x.value = true
+    elif y == cstring"false":
+      x.value = false
+    else:
+      x.value = false # todo raise?
   elif T is cstring:
     x.value = y
   else:
@@ -149,12 +142,13 @@ template textImpl[T](x: T): cstring =
   else:
     toString(x)
 
-proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
+proc construct(parentElement: NimNode, res: var string,
                     count: var int,
                     textCount: var int,
                     node: NimNode,
                     isCall: static bool = false,
-                    countNode = newEmptyNode()): NimNode =
+                    countNode = newEmptyNode(),
+                    passedChildren = newEmptyNode()): NimNode =
   case node.kind
   of nnkStmtList, nnkStmtListExpr:
 
@@ -162,7 +156,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
 
     result = newNimNode(node.kind, node)
     for x in node:
-      let tmp = construct(monitor, parentElement, res, count, textCount, x)
+      let tmp = construct(parentElement, res, count, textCount, x, passedChildren = passedChildren)
       if tmp.kind != nnkEmpty:
         result.add tmp
 
@@ -181,7 +175,6 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
           access.add countNode
           access
         else:
-          echo "=>", name
           if count == 0:
             quote do:
               cast[Element](`parentElement`.firstChild)
@@ -202,7 +195,6 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         if isSingleTag:
           res.add fmt"<{name}"
         result = newStmtList()
-        echo "=>", " ", node.treeRepr
         for i in 1..<node.len:
           let x = node[i]
           if x.kind == nnkExprEqExpr:
@@ -210,31 +202,20 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
             if name.startsWith("on"):
               let variable = x[1]
               if name == "onChecked":
+
                 result.add quote do:
-                  bindInput(`monitor`, `parentNode`, cstring"checked",
-                            `variable`, () => `variable`.toString(),
-                            proc (x: Watcher, node: Element, y: var bool) =
-                              y = getChecked(node, "checked");
-                              x.value = y.toString()
-                            )
+                  let node = `parentNode` # todo why need a new copy? consider make renderDom a closure?
+                  addEventListener(`parentNode`, "input", (ev: Event) => (`variable`.value =
+                                   getChecked(node, cstring"checked")))
               elif name == "onClick":
                 result.add quote do:
                   addEventListener(`parentNode`, "click", (ev: Event) => (`variable`(ev)))
               else:
                 let newName = name[2..^1].toLowerAscii
-                echo variable.treeRepr, " ", newName
                 result.add quote do:
                   let node = `parentNode` # todo why need a new copy? consider make renderDom a closure?
                   addEventListener(`parentNode`, "input", (ev: Event) => (parseImpl(`variable`,
                                    getAttr(node, `newName`.cstring))))
-                  # let watcher = Watcher(fn: getCallBack, callback: (value: cstring) => (element.setAttr(name, value)), value: "")
-                  # addEventListener(element, "input", (ev: Event) => (`variable` = getAttr(node, `newName`.cstring)))
-                #   bindInput(`monitor`, `parentNode`, `newName`.cstring,
-                #             `variable`, () => `variable`,
-                #             proc (x: Watcher, node: Element, y: var cstring) =
-                #               x.value = getAttr(node, `newName`.cstring);
-                #               y = x.value
-                #             )
             else:
               # todo x1.kind
               res.add fmt" {name}={x[1].strVal}"
@@ -242,7 +223,7 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
           else:
             if isSingleTag:
               error(fmt"A empty element({name}) is not allowed to have children", x)
-            result.add construct(monitor, parentNode, part, partCount, textCount, x)
+            result.add construct(parentNode, part, partCount, textCount, x, passedChildren = passedChildren)
             res.add fmt"<{name}>{part}</{name}>"
         if isSingleTag:
           res.add ">"
@@ -256,7 +237,6 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         res.add node[1].strVal
         result = newEmptyNode()
       else:
-        echo node[1].kind
         res.add " "
         var currentNode =
           if count == 0:
@@ -270,15 +250,34 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         let tmp = node[1]
         # textImpl
         let textCall = newCall(bindSym"textImpl", tmp)
+        let procName = genSym(nskProc)
         result = quote do:
-          proc catchElement(x: Element): Effect =
+          proc `procName`(x: Element): Effect =
             result = proc () =
               x.textContent = `textCall`
-          watchImpl catchElement(`currentNode`)
+          watchImpl `procName`(`currentNode`)
       inc count
+    elif name == "children":
+      echo "-----------------------------------"
+      echo passedChildren.treeRepr
+      echo "-----------------------------------"
+
+      echo isCall, " => ", passedChildren.repr
+      var partCount = 0
+      textCount = 0
+      if passedChildren.kind != nnkEmpty:
+        result = construct(parentElement, res, partCount, textCount, passedChildren)
     else:
       # echo node.repr
       const bodyPos = 6
+      echo node.treeRepr
+      var passedChildren = newEmptyNode()
+      if node[^1].kind == nnkStmtList:
+        passedChildren = node[^1]
+        node.del(node.len-1)
+
+      echo "here you are: ", passedChildren.repr
+
       if countTableNode[node[0].getName] == 0:
         const paramsPos = 3
         let def = buildTableNode[node[0].getName]
@@ -291,52 +290,25 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
         let body = def[bodyPos][0]
         body.del(0)
         constructedTableNode[node[0].getName] = buildTableNode[node[0].getName].copy
-        buildTableNode[node[0].getName][bodyPos][0] = construct(monitor, parentElement, res,
-                      count, textCount, body, isCall = true, passedCount)
+
+        echo body.treeRepr
+        buildTableNode[node[0].getName][bodyPos][0] = construct(parentElement, res,
+                      count, textCount, body, isCall = true, passedCount, passedChildren)
         countNodeTable[node[0].getName] = passedCount
         countTableNode[node[0].getName] = 1
       else:
         let def = constructedTableNode[node[0].getName]
         let body = def[bodyPos][0]
         let passedCount = countNodeTable[node[0].getName]
-        discard construct(monitor, parentElement, res,
-                      count, textCount, body, isCall = true, passedCount)
+        discard construct(parentElement, res,
+                      count, textCount, body, isCall = true, passedCount, passedChildren)
       node.insert(1, newLit(count-1))
       # node.insert(2, monitor)
       # node.insert(3, parentElement)
       result = quote do:
         `node`
-      # else:
-      #   result = quote do:
-      #     `node`
-
-      # res.add ""
-      # result = newStmtList()
-
-      # var currentNode =
-      #   if count == 0:
-      #     quote do:
-      #       cast[Element](`parentElement`.firstChild) #! Node
-      #   else:
-      #     quote do:
-      #       `parentElement`[`count`]
-      # echo treeRepr(node)
-      # let contextNode = ComponentContext(monitor: monitor,
-      #                       parent: currentNode,
-      #                       )
-
-      # var newcall = newNimNode(nnkCall, node)
-      # newcall.add node[0]
-      # newcall.add contextNode
-
-      # for i in 1..<node.len:
-      #   newcall.add node[i]
-
-      # result.add newcall
-      # inc count
-      # doAssert false, fmt"2: {name}"
-      # result = newEmptyNode()
   else:
+    echo node.treeRepr
     doAssert false, fmt"3: {node.kind}"
     # if node.len > 0:
     #   for i in node:
@@ -347,27 +319,19 @@ proc construct(monitor: NimNode, parentElement: NimNode, res: var string,
 template build*(name, children: untyped): untyped =
   # echo children.treeRepr
   discard
-  # let context = ident"componentContext
-  #   construct(`context`.monitor,
-  #     `context`.parent, `context`.res,
-  #     `context`.count, # todo
-  #     `context`.textCount, children)
 
-macro buildHtml*(children: untyped): Element =
+macro buildHtml*(name, children: untyped): Element =
   let parentElement = genSym(nskLet, "parentElement")
   var res = ""
   var count = 0
   var textCount = 0
-  var monitor = genSym(nskVar, "monitor")
-  let component = construct(monitor, parentElement, res, count, textCount, children)
+  let component = construct(parentElement, res, count, textCount, children)
   var defs = newStmtList()
+  res = fmt"{res}"
+  # echo "=====================>: ", res
   for i in buildTableNode.values:
-    echo i.repr
     defs.add i
-  # echo repr(component)
-  # echo res
   result = quote do:
-    var `monitor` = Monitor() # todo remove global ?
     var fragment = document.createElement("template")
     fragment.innerHtml = `res`.cstring
     let `parentElement` = fragment.content
