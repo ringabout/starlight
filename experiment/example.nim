@@ -1,11 +1,6 @@
-import starlight, starutils
+import starlight
 import aqua/web/doms
-import aqua/std/jsconsole
 import aqua/std/proxy
-import std/sugar
-
-template `+=`*(x: var Reactive[int], y: int) =
-  x.value = x.value + y
 
 
 when false:
@@ -77,11 +72,8 @@ when false:
   setRenderer createDom
 
 when true:
+  import child
   var name = reactive cstring"Hello world"
-  proc buildText(x: cstring) {.component.} =
-    build(`div`):
-      p: text x
-      `div`: children()
 
   proc createDom(): Element =
     buildHtml(`div`):

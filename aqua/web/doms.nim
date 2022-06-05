@@ -5,7 +5,7 @@ when not defined(js):
 
 
 type
-  EventTarget* = ref object of JSRoot
+  EventTarget* = ref object of JsRoot
     onabort*: proc (event: Event) {.closure.}
     onblur*: proc (event: Event) {.closure.}
     onchange*: proc (event: Event) {.closure.}
@@ -147,7 +147,7 @@ type
 
   Frame* {.importc.} = ref object of Window
 
-  ClassList* {.importc.} = ref object of JSRoot
+  ClassList* {.importc.} = ref object of JsRoot
 
   NodeType* = enum
     ElementNode = 1,
@@ -233,7 +233,7 @@ type
     offsetLeft*: int
     offsetTop*: int
 
-  ValidityState* {.importc.} = ref object of JSRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/ValidityState>`_
+  ValidityState* {.importc.} = ref object of JsRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/ValidityState>`_
     badInput*: bool
     customError*: bool
     patternMismatch*: bool
@@ -246,7 +246,7 @@ type
     valid*: bool
     valueMissing*: bool
 
-  Blob* {.importc.} = ref object of JSRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/Blob>`_
+  Blob* {.importc.} = ref object of JsRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/Blob>`_
     size*: int
     `type`*: cstring
 
@@ -359,7 +359,7 @@ type
     vspace*: int
     width*: int
 
-  Style* {.importc.} = ref object of JSRoot
+  Style* {.importc.} = ref object of JsRoot
     alignContent*: cstring
     alignItems*: cstring
     alignSelf*: cstring
@@ -735,7 +735,7 @@ type
     AtTarget,
     BubblingPhase
 
-  Event* {.importc.} = ref object of JSRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/Event>`_
+  Event* {.importc.} = ref object of JsRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/Event>`_
     bubbles*: bool
     cancelBubble*: bool
     cancelable*: bool
@@ -1130,11 +1130,11 @@ type
     File = "file",
     String = "string"
 
-  DataTransferItem* {.importc.} = ref object of JSRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItem>`_
+  DataTransferItem* {.importc.} = ref object of JsRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/DataTransferItem>`_
     kind*: cstring
     `type`*: cstring
 
-  DataTransfer* {.importc.} = ref object of JSRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer>`_
+  DataTransfer* {.importc.} = ref object of JsRoot ## see `docs<https://developer.mozilla.org/en-US/docs/Web/API/DataTransfer>`_
     dropEffect*: cstring
     effectAllowed*: cstring
     files*: seq[Element]
@@ -1182,10 +1182,10 @@ type
     storageArea*: Storage
     url*: cstring
 
-  TouchList* {.importc.} = ref object of JSRoot
+  TouchList* {.importc.} = ref object of JsRoot
     length*: int
 
-  Touch* {.importc.} = ref object of JSRoot
+  Touch* {.importc.} = ref object of JsRoot
     identifier*: int
     screenX*, screenY*, clientX*, clientY*, pageX*, pageY*: int
     target*: Element
@@ -1196,7 +1196,7 @@ type
   TouchEvent* {.importc.} = ref object of UIEvent
     changedTouches*, targetTouches*, touches*: seq[Touch]
 
-  Location* {.importc.} = ref object of JSRoot
+  Location* {.importc.} = ref object of JsRoot
     hash*: cstring
     host*: cstring
     hostname*: cstring
@@ -1207,10 +1207,10 @@ type
     search*: cstring
     origin*: cstring
 
-  History* {.importc.} = ref object of JSRoot
+  History* {.importc.} = ref object of JsRoot
     length*: int
 
-  Navigator* {.importc.} = ref object of JSRoot
+  Navigator* {.importc.} = ref object of JsRoot
     appCodeName*: cstring
     appName*: cstring
     appVersion*: cstring
@@ -1229,18 +1229,18 @@ type
     webdriver*: bool         ## https://developer.mozilla.org/en-US/docs/Web/API/Navigator/webdriver
     mimeTypes*: seq[ref MimeType]
 
-  Plugin* {.importc.} = ref object of JSRoot
+  Plugin* {.importc.} = ref object of JsRoot
     description*: cstring
     filename*: cstring
     name*: cstring
 
-  MimeType* {.importc.} = ref object of JSRoot
+  MimeType* {.importc.} = ref object of JsRoot
     description*: cstring
     enabledPlugin*: ref Plugin
     suffixes*: seq[cstring]
     `type`*: cstring
 
-  LocationBar* {.importc.} = ref object of JSRoot
+  LocationBar* {.importc.} = ref object of JsRoot
     visible*: bool
   MenuBar* = LocationBar
   PersonalBar* = LocationBar
@@ -1248,7 +1248,7 @@ type
   ToolBar* = LocationBar
   StatusBar* = LocationBar
 
-  Screen {.importc.} = ref object of JSRoot
+  Screen {.importc.} = ref object of JsRoot
     availHeight*: int
     availWidth*: int
     colorDepth*: int
@@ -1256,8 +1256,8 @@ type
     pixelDepth*: int
     width*: int
 
-  TimeOut* {.importc.} = ref object of JSRoot
-  Interval* {.importc.} = ref object of JSRoot
+  TimeOut* {.importc.} = ref object of JsRoot
+  Interval* {.importc.} = ref object of JsRoot
 
   AddEventListenerOptions* = object # todo ref object
     capture*: bool
@@ -1305,9 +1305,9 @@ type
     ## https://developer.mozilla.org/en-US/docs/Web/API/FileReader
 
   FileReaderState* = distinct range[0'u16..2'u16]
-  RootNodeOptions* = object of JSRoot # todo
+  RootNodeOptions* = object of JsRoot # todo
     composed*: bool
-  DocumentOrShadowRoot* {.importc.} = object of JSRoot
+  DocumentOrShadowRoot* {.importc.} = object of JsRoot
     activeElement*: Element
     # styleSheets*: StyleSheetList
   ShadowRoot* = ref ShadowRootObj
@@ -1316,14 +1316,14 @@ type
     host*: Element
     innerHTML*: cstring
     mode*: cstring # "open" or "closed"
-  ShadowRootInit* = object of JSRoot
+  ShadowRootInit* = object of JsRoot
     mode*: cstring
     delegatesFocus*: bool
 
   HTMLSlotElement* = ref HTMLSlotElementObj
-  HTMLSlotElementObj {.importc.} = object of JSRoot
+  HTMLSlotElementObj {.importc.} = object of JsRoot
     name*: cstring
-  SlotOptions* = object of JSRoot
+  SlotOptions* = object of JsRoot
     flatten*: bool
 
 const

@@ -12,14 +12,14 @@ type
     else:
       deps: Set[Effect]
 
-  Handler = ref object
-    construct: proc()
-
   Effect* = proc ()
 
   Primitive* = SomeNumber|cstring|bool
 
 
+
+template `+=`*(x: var Reactive[int], y: int) =
+  x.value = x.value + y
 
 var effectStack = newJSeq[Effect]()
 var rawToProxy = newMap[JsObject, JsObject]()
@@ -31,7 +31,7 @@ type
     `get`: proc (target: JsObject, key: cstring, receiver: JsObject): JsObject
 
 
-proc defineProperty[T](obj: T, prop: cstring, descriptor: Descriptor) {.importjs: "Object.defineProperty(#, #, #)".}
+# proc defineProperty[T](obj: T, prop: cstring, descriptor: Descriptor) {.importjs: "Object.defineProperty(#, #, #)".}
 
 proc getJsType(x: JsObject): cstring {.importjs: "typeof(#)".}
 
@@ -85,16 +85,22 @@ proc `value=`*[T: Primitive](x: Reactive[T], y: T) =
   for effect in items(x.deps):
     effect()
 
+proc reflectGet(target: JsObject, key: cstring, receiver: JsObject
+                ): JsObject {.importjs: "Reflect.get(#, #, #)".}
+
+proc reflectSet(target: JsObject, key: cstring, value: JsObject, receiver: JsObject
+                ) {.importjs: "Reflect.set(#, #, #, #)".}
+
 proc reactiveSetter(target: JsObject, key: cstring, value: JsObject, receiver: JsObject) =
   # check old value
-  target[key] = value
+  target.reflectSet(key, value, receiver)
   trigger(target, key)
 
 proc newReactive2(x: JsObject): Reactive[JsObject]
 
 proc reactiveGetter(target: JsObject, key: cstring, receiver: JsObject): JsObject =
   track(target, key)
-  let res = target[key]
+  let res = target.reflectGet(key, receiver)
   if res != nil and getJsType(res) == "object":
     let data = newReactive2(res)
     result = cast[JsObject](data.value)

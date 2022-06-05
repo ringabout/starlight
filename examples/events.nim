@@ -1,16 +1,16 @@
-import stardust, starutils
-
+import experiment/starlight, starutils
+import aqua/std/proxy
 import aqua/web/doms
 import std/sugar
 proc createDom(): Element =
-  var count = 0
-  var name = cstring""
+  var count = reactive 0
+  var name = reactive cstring""
   let call = (ev: Event) => (count += 1)
-  buildHtml:
+  buildHtml(`div`):
     text "Enter word and press enter:"
     input(onValue=name)
     br()
-    text name.toString()
+    text name
     br()
     button(onClick=call):
       text "Click me!"

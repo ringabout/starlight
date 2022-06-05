@@ -68,14 +68,15 @@ proc construct(parentElement: NimNode, res: var string,
                     textCount: var int,
                     node: NimNode,
                     isCall: static bool = false,
-                    countNode = newEmptyNode(),
+                    passedCount = newEmptyNode(),
+                    passedParent = newEmptyNode(),
                     passedChildren = newEmptyNode()): NimNode
 
 
 import std/tables
 var buildTableNode {.compileTime.}: Table[string, NimNode]
 var constructedTableNode {.compileTime.}: Table[string, NimNode]
-var countNodeTable {.compileTime.}: Table[string, NimNode]
+var countNodeTable {.compileTime.}: Table[string, (NimNode, NimNode)]
 var countTableNode {.compileTime.}: Table[string, int]
 
 type
@@ -84,17 +85,14 @@ type
     res: string
     count, textCount: int
 
+template toUpperCase*(x: Reactive[cstring]): cstring =
+  x.value.toUpperCase
+
 proc replaceChild*(n: Node, newNode, oldNode: Element) {.importcpp.}
 
 macro component*(x: untyped) =
-  # expectKind(x, nnkProcDef)
-  # let defs = newIdentDefs(ident"componentContext",
-  #                         newTree(nnkStaticTy, ident"ComponentContext")
-  #                        )
-  # x[3].insert(1, defs)
-  echo "here: ", x[0].getName
-  # result = x
-  echo x.repr
+  if x[0].kind == nnkPostfix: # check exported component
+    x[0] = x[0][1]
 
   buildTableNode[x[0].getName] = x
   countTableNode[x[0].getName] = 0
@@ -147,7 +145,8 @@ proc construct(parentElement: NimNode, res: var string,
                     textCount: var int,
                     node: NimNode,
                     isCall: static bool = false,
-                    countNode = newEmptyNode(),
+                    passedCount = newEmptyNode(),
+                    passedParent = newEmptyNode(),
                     passedChildren = newEmptyNode()): NimNode =
   case node.kind
   of nnkStmtList, nnkStmtListExpr:
@@ -171,8 +170,8 @@ proc construct(parentElement: NimNode, res: var string,
       var parentNode =
         when isCall:
           var access = newNimNode(nnkBracketExpr)
-          access.add parentElement
-          access.add countNode
+          access.add passedParent
+          access.add passedCount
           access
         else:
           if count == 0:
@@ -244,7 +243,7 @@ proc construct(parentElement: NimNode, res: var string,
               cast[Element](`parentElement`.firstChild) #! Node
           else:
             quote do:
-              `parentElement`[`count`]
+              `parentElement`[count]
 
         # ! bug cannot inline node[1]
         let tmp = node[1]
@@ -258,55 +257,68 @@ proc construct(parentElement: NimNode, res: var string,
           watchImpl `procName`(`currentNode`)
       inc count
     elif name == "children":
-      echo "-----------------------------------"
-      echo passedChildren.treeRepr
-      echo "-----------------------------------"
-
-      echo isCall, " => ", passedChildren.repr
       var partCount = 0
       textCount = 0
       if passedChildren.kind != nnkEmpty:
         result = construct(parentElement, res, partCount, textCount, passedChildren)
     else:
-      # echo node.repr
       const bodyPos = 6
-      echo node.treeRepr
       var passedChildren = newEmptyNode()
       if node[^1].kind == nnkStmtList:
         passedChildren = node[^1]
         node.del(node.len-1)
 
-      echo "here you are: ", passedChildren.repr
-
-      if countTableNode[node[0].getName] == 0:
+      let nodeName = node[0].getName
+      if nodeName notin countTableNode:
+        error(fmt"{nodeName} is undefined", node) # todo better message
+      elif countTableNode[nodeName] == 0:
         const paramsPos = 3
-        let def = buildTableNode[node[0].getName]
+        let def = buildTableNode[nodeName]
         let passedCount = genSym(nskParam, "count")
+        let passedParent = genSym(nskParam, "parent")
         let params = def[paramsPos]
         let staticCount = newNimNode(nnkStaticTy)
         staticCount.add ident"int"
         params.insert(1, newIdentDefs(passedCount, ident"int"))
+        params.insert(1, newIdentDefs(passedParent, ident"Element"))
 
-        let body = def[bodyPos][0]
+        let body = def[bodyPos][^1]
+        # echo def.treeRepr
+        # echo "---> ", body.treeRepr
         body.del(0)
-        constructedTableNode[node[0].getName] = buildTableNode[node[0].getName].copy
+        constructedTableNode[nodeName] = buildTableNode[nodeName].copy
 
-        echo body.treeRepr
-        buildTableNode[node[0].getName][bodyPos][0] = construct(parentElement, res,
-                      count, textCount, body, isCall = true, passedCount, passedChildren)
-        countNodeTable[node[0].getName] = passedCount
-        countTableNode[node[0].getName] = 1
+        # echo "---> ", body.repr
+        buildTableNode[nodeName][bodyPos][^1] = construct(parentElement, res,
+                      count, textCount, body, isCall = true, passedCount, passedParent, passedChildren)
+        countNodeTable[nodeName] = (passedCount, passedParent)
+        countTableNode[nodeName] = 1
+
+        echo "----------------------------------"
+        echo def.repr
+        echo "----------------------------------"
+
       else:
-        let def = constructedTableNode[node[0].getName]
-        let body = def[bodyPos][0]
-        let passedCount = countNodeTable[node[0].getName]
+        let def = constructedTableNode[nodeName]
+        let body = def[bodyPos][^1]
+        let (passedCount, passedParent) = countNodeTable[nodeName]
         discard construct(parentElement, res,
-                      count, textCount, body, isCall = true, passedCount, passedChildren)
-      node.insert(1, newLit(count-1))
+                      count, textCount, body, isCall = true, passedCount, passedParent, passedChildren)
+      let nodeCopy = node.copy # todo why copy is needed?
+      nodeCopy.insert(1, newLit(count-1))
+      nodeCopy.insert(1, quote do:
+        cast[Element](`parentElement`)
+        )
       # node.insert(2, monitor)
       # node.insert(3, parentElement)
+      echo "----------------------------------"
+      echo nodeCopy.repr
+      echo "----------------------------------"
+
       result = quote do:
-        `node`
+        `nodeCopy`
+  of nnkLetSection:
+    result = node
   else:
     echo node.treeRepr
     doAssert false, fmt"3: {node.kind}"
@@ -317,7 +329,6 @@ proc construct(parentElement: NimNode, res: var string,
     #   result = node
 
 template build*(name, children: untyped): untyped =
-  # echo children.treeRepr
   discard
 
 macro buildHtml*(name, children: untyped): Element =
@@ -328,17 +339,19 @@ macro buildHtml*(name, children: untyped): Element =
   let component = construct(parentElement, res, count, textCount, children)
   var defs = newStmtList()
   res = fmt"{res}"
-  # echo "=====================>: ", res
   for i in buildTableNode.values:
     defs.add i
   result = quote do:
     var fragment = document.createElement("template")
-    fragment.innerHtml = `res`.cstring
+    fragment.innerHTML = `res`.cstring
     let `parentElement` = fragment.content
     `defs`
     `component`
     cast[Element](`parentElement`)
+  echo "***********************************"
   echo result.repr
+  echo "***********************************"
+
 
 proc setRenderer*(render: proc(): Element, id = cstring"ROOT") =
   let root = document.getElementById(id)
